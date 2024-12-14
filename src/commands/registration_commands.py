@@ -143,7 +143,7 @@ def register_registration_handlers(bot: TeleBot):
                 bot.reply_to(message, "No pending registrations.")
                 return
                 
-            for user_id, username, first_name, last_name, email, _, _, request_id in pending:
+            for user_id, username, first_name, last_name, email, status, request_id in pending:
                 markup = types.InlineKeyboardMarkup()
                 markup.row(
                     types.InlineKeyboardButton("✅ Approve", callback_data=f"approve_{request_id}"),

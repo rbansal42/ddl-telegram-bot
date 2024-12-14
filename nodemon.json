@@ -1,12 +1,13 @@
 {
-    "watch": ["*.py"],
-    "exec": "python bot.py",
+    "watch": ["src/**/*.py"],
+    "exec": "python src/bot.py",
     "ext": "py",
     "ignore": [
         "*.pyc",
         "__pycache__",
         ".env",
-        "venv/*"
+        "venv/*",
+        "tests/*"
     ],
     "delay": "1000"
-} 
+}
