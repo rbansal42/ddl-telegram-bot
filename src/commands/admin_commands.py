@@ -4,6 +4,7 @@ from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
+from src.utils.user_actions import log_action, ActionType
 
 def register_admin_handlers(bot: TeleBot):
     db = MongoDB()
@@ -18,6 +19,15 @@ def register_admin_handlers(bot: TeleBot):
                 'role': Role.MEMBER.name.lower()
             })
             member_list = list(members)
+            
+            log_action(
+                ActionType.ADMIN_COMMAND,
+                message.from_user.id,
+                metadata={
+                    'command': 'listmembers',
+                    'members_count': len(member_list)
+                }
+            )
             
             if not member_list:
                 bot.reply_to(message, "📝 No registered members found.")
