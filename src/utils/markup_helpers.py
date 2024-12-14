@@ -2,60 +2,50 @@ from telebot import types
 from typing import List, Dict, Union, Tuple
 
 def create_list_markup(
-    items: List[Dict],
+    items: Dict,
     display_fields: List[Tuple[str, str]],
     actions: List[Tuple[str, str, str]],
-    item_id_field: str = 'id'
-) -> Tuple[types.InlineKeyboardMarkup, str]:
+    item_id_field='user_id'
+) -> types.InlineKeyboardMarkup:
     """
     Create a consistent markup for lists with action buttons.
     
     Args:
-        items: List of dictionaries containing item data
+        items: Dictionary containing item data
         display_fields: List of tuples (field_name, emoji) for display
         actions: List of tuples (emoji, text, callback_prefix)
         item_id_field: Field name to use as ID in callback data
     
     Returns:
-        Tuple of (InlineKeyboardMarkup, formatted_text)
+        InlineKeyboardMarkup
     """
     markup = types.InlineKeyboardMarkup()
     
-    for item in items:
-        # Create info display buttons (non-functional)
-        for field, emoji in display_fields:
-            value = item.get(field, 'N/A')
-            if isinstance(value, (list, dict)):
-                continue
-            info_button = types.InlineKeyboardButton(
-                text=f"{emoji} {value}",
-                callback_data=f"info_{item[item_id_field]}"  # Non-functional
+    # Create info display buttons (non-functional)
+    for field, emoji in display_fields:
+        value = items.get(field, 'N/A')
+        if isinstance(value, (list, dict)):
+            continue
+        info_button = types.InlineKeyboardButton(
+            text=f"{emoji} {value}",
+            callback_data=f"info_{items[item_id_field]}"  # Non-functional
+        )
+        markup.add(info_button)
+    
+    # Create action buttons row
+    action_buttons = []
+    for emoji, text, callback_prefix in actions:
+        action_buttons.append(
+            types.InlineKeyboardButton(
+                f"{emoji} {text}",
+                callback_data=f"{callback_prefix}_{items[item_id_field]}"
             )
-            markup.add(info_button)
-        
-        # Create action buttons row
-        action_buttons = []
-        for emoji, text, callback_prefix in actions:
-            action_buttons.append(
-                types.InlineKeyboardButton(
-                    f"{emoji} {text}",
-                    callback_data=f"{callback_prefix}_{item[item_id_field]}"
-                )
-            )
-        markup.row(*action_buttons)
-        
-        # Add separator between items (if not last item)
-        if item != items[-1]:
-            separator = types.InlineKeyboardButton(
-                "➖" * 10,
-                callback_data=f"separator_{item[item_id_field]}"
-            )
-            markup.add(separator)
+        )
+    markup.row(*action_buttons)
     
     return markup
 
-# Example usage for different scenarios:
-def create_registration_markup(pending_requests: List[Dict]) -> Tuple[types.InlineKeyboardMarkup, str]:
+def create_registration_markup(pending_request: Dict) -> types.InlineKeyboardMarkup:
     """Create markup for pending registration requests"""
     display_fields = [
         ('full_name', '👤'),
@@ -65,9 +55,9 @@ def create_registration_markup(pending_requests: List[Dict]) -> Tuple[types.Inli
         ('✅', 'Approve', 'approve'),
         ('❌', 'Reject', 'reject')
     ]
-    return create_list_markup(pending_requests, display_fields, actions, 'request_id')
+    return create_list_markup(pending_request, display_fields, actions, 'request_id')
 
-def create_member_list_markup(members: List[Dict], page: int, total_pages: int) -> Tuple[types.InlineKeyboardMarkup, str]:
+def create_member_list_markup(member: Dict, page: int, total_pages: int) -> types.InlineKeyboardMarkup:
     """Create markup for paginated member list"""
     display_fields = [
         ('username', '@'),
@@ -81,18 +71,16 @@ def create_member_list_markup(members: List[Dict], page: int, total_pages: int) 
     if page < total_pages:
         navigation_buttons.append(('➡️', 'Next', f'members_{page+1}'))
     
-    return create_list_markup(members, display_fields, navigation_buttons)
+    return create_list_markup(member, display_fields, navigation_buttons)
 
-def create_admin_list_markup(admins: List[Dict]) -> Tuple[types.InlineKeyboardMarkup, str]:
+def create_admin_list_markup(admin: Dict) -> types.InlineKeyboardMarkup:
     """Create markup for admin list"""
     # Format admin data for display
-    formatted_admins = []
-    for admin in admins:
-        formatted_admins.append({
-            'user_id': admin.get('user_id'),
-            'username': admin.get('username', 'N/A'),
-            'full_name': f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
-        })
+    formatted_admin = {
+        'user_id': admin.get('user_id'),
+        'username': admin.get('username', 'N/A'),
+        'full_name': f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
+    }
 
     display_fields = [
         ('username', '@'),
@@ -100,14 +88,13 @@ def create_admin_list_markup(admins: List[Dict]) -> Tuple[types.InlineKeyboardMa
         ('user_id', '🆔')
     ]
     actions = [('⬇️', 'Demote', 'demote')]
-    markup, _ = create_list_markup(formatted_admins, display_fields, actions)
-    return markup
+    return create_list_markup(formatted_admin, display_fields, actions)
 
-def create_promotion_markup(members: List[Dict]) -> Tuple[types.InlineKeyboardMarkup, str]:
+def create_promotion_markup(member: Dict) -> types.InlineKeyboardMarkup:
     """Create markup for member promotion list"""
     display_fields = [
         ('full_name', '👤'),
         ('user_id', '🆔')
     ]
     actions = [('⬆️', 'Promote', 'promote')]
-    return create_list_markup(members, display_fields, actions) 
+    return create_list_markup(member, display_fields, actions, 'user_id') 

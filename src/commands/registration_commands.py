@@ -5,7 +5,7 @@ from src.database.mongo_db import MongoDB
 from src.commands import CMD_REGISTER
 from src.utils.notifications import notify_user
 from src.utils.notifications import NotificationType
-from src.utils.markup_helpers import create_registration_markup
+from src.middleware.auth import check_admin_or_owner
 
 def register_registration_handlers(bot: TeleBot):
     db = MongoDB()
@@ -97,55 +97,55 @@ def register_registration_handlers(bot: TeleBot):
                 "Please try again later or contact support.")
 
     @bot.message_handler(commands=['pending'])
-    def list_pending_registrations(message: types.Message):
-        """Handler for listing pending registrations (admin only)"""
+    @check_admin_or_owner(bot, db)
+    def list_pending_registrations(message):
+        """List all pending registration requests"""
         try:
-            if not is_admin(message.from_user.id):
-                bot.reply_to(message, "❌ This command is only available to admins.")
-                return
-                
-            print("\n=== Listing Pending Registrations ===")
-            pending = db.get_pending_registrations()
+            # Get pending registrations
+            pending = db.registration_requests.find({'status': 'pending'})
+            pending_list = list(pending)
             
-            if not pending:
-                bot.reply_to(message, "No pending registrations.")
+            if not pending_list:
+                bot.reply_to(message, "📝 No pending registration requests.")
                 return
             
-            # Send header message
-            bot.reply_to(message, "📝 *Pending Registration Requests:*\n", parse_mode="Markdown")
-            
-            # Convert pending registrations to list of dictionaries
-            pending_list = [
-                {
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'username': username,
-                    'full_name': f"{first_name} {last_name}".strip(),
-                    'email': email,
-                    'status': status
-                }
-                for user_id, username, first_name, last_name, email, status, request_id in pending
-            ]
-            
-            # Create markup for each registration request
+            # Send each request as a separate message with approve/reject buttons
             for request in pending_list:
-                markup = create_registration_markup([request])  # Pass as single-item list
+                # Format user info
+                full_name = f"{request.get('first_name', '')} {request.get('last_name', '')}".strip() or 'N/A'
+                email = request.get('email', 'N/A')
+                request_id = str(request['_id'])
                 
-                text = (
-                    f"*Registration Request #{request['request_id']}*\n"
-                    f"User ID: `{request['user_id']}`"
+                # Create markup with info display and action buttons
+                markup = types.InlineKeyboardMarkup(row_width=2)
+                # Info button (non-clickable)
+                markup.add(
+                    types.InlineKeyboardButton(
+                        f"👤 {full_name} | 📧 {email}",
+                        callback_data=f"info_{request_id}"
+                    )
+                )
+                # Action buttons row
+                markup.row(
+                    types.InlineKeyboardButton(
+                        "✅ Approve",
+                        callback_data=f"approve_{request_id}"
+                    ),
+                    types.InlineKeyboardButton(
+                        "❌ Reject",
+                        callback_data=f"reject_{request_id}"
+                    )
                 )
                 
                 bot.send_message(
                     message.chat.id,
-                    text,
+                    "📝 *Registration Request:*",
                     reply_markup=markup,
                     parse_mode="Markdown"
                 )
                 
         except Exception as e:
-            print(f"❌ Error in list_pending_registrations: {e}")
-            bot.reply_to(message, "❌ Error fetching pending registrations.")
+            bot.reply_to(message, f"❌ Error listing pending requests: {e}")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('approve_', 'reject_')))
     def handle_registration_decision(call):

@@ -17,54 +17,35 @@ def register_owner_handlers(bot: TeleBot):
         try:
             args = message.text.split()
             if len(args) == 1:  # No user_id provided
-                # Add debug logging
-                print("\n=== Finding Members for Admin Promotion ===")
-                
                 # Get members query
                 members_query = {
                     'registration_status': 'approved',
                     'role': Role.MEMBER.name.lower()
                 }
-                print(f"Query parameters: {members_query}")
                 
                 # Execute query
                 members = db.users.find(members_query)
                 member_list = list(members)
-                print(f"Found {len(member_list)} members")
                 
                 if not member_list:
-                    error_msg = "No registered members found to promote"
-                    print(f"Error: {error_msg}")
-                    
-                    log_action(
-                        ActionType.COMMAND_FAILED,
-                        message.from_user.id,
-                        error_message=error_msg,
-                        metadata={
-                            'command': 'addadmin',
-                            'query': members_query
-                        }
-                    )
                     bot.reply_to(message, "📝 No registered members found to promote.")
                     return
-                
-                # Debug: Print found members
+
+                # Create markup
+                markup = types.InlineKeyboardMarkup()
                 for member in member_list:
-                    print(f"Member found: ID={member.get('user_id')}, "
-                          f"Role={member.get('role')}, "
-                          f"Status={member.get('registration_status')}")
-                
-                markup = create_promotion_markup(member_list)
-                
-                log_action(
-                    ActionType.ADMIN_COMMAND,
-                    message.from_user.id,
-                    metadata={
-                        'command': 'addadmin',
-                        'action': 'list_displayed',
-                        'members_found': len(member_list)
-                    }
-                )
+                    # Format member info in one line
+                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
+                    email = member.get('email', 'N/A')
+                    user_id = member.get('user_id')
+                    
+                    # Single button with all info
+                    markup.add(
+                        types.InlineKeyboardButton(
+                            f"👤 {full_name} | 📧 {email}",
+                            callback_data=f"promote_{user_id}"
+                        )
+                    )
                 
                 bot.reply_to(message, 
                     "👥 *Select a member to promote to admin:*",
@@ -85,61 +66,6 @@ def register_owner_handlers(bot: TeleBot):
             )
             bot.reply_to(message, f"❌ Error adding admin: {e}")
 
-    # Add new callback handler for promotion buttons
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
-    def handle_admin_promotion(call):
-        """Handle admin promotion from inline keyboard"""
-        try:
-            # Check if user is owner
-            user_id = call.from_user.id
-            user = db.users.find_one({'user_id': user_id})
-            
-            if not user or user.get('role') != Role.OWNER.name.lower():
-                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
-                return
-            
-            _, user_id = call.data.split('_')
-            user_id = int(user_id)
-            
-            promote_to_admin(bot, db, call.message.chat.id, user_id)
-            
-            # Update the original message to remove the inline keyboard
-            bot.edit_message_text(
-                f"✅ Admin promotion completed.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="Markdown"
-            )
-            bot.answer_callback_query(call.id)
-            
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
-
-    def promote_to_admin(bot, db, chat_id, user_id):
-        """Helper function to promote a user to admin"""
-        try:
-            # Update user role to admin
-            db.users.update_one(
-                {'user_id': user_id},
-                {'$set': {'role': Role.ADMIN.name.lower()}}
-            )
-            
-            bot.send_message(chat_id, f"✅ User {user_id} has been promoted to admin.")
-            
-            # Notify the new admin
-            try:
-                notify_user(
-                    bot,
-                    NotificationType.PROMOTION_TO_ADMIN,
-                    user_id,
-                    issuer_id=chat_id
-                )
-            except Exception as e:
-                print(f"Failed to notify new admin: {e}")
-                
-        except Exception as e:
-            raise Exception(f"Failed to promote user to admin: {e}")
-        
     @bot.message_handler(commands=['removeadmin'])
     @check_owner(bot, db)
     def remove_admin(message):
@@ -154,6 +80,7 @@ def register_owner_handlers(bot: TeleBot):
                         'username': 1,
                         'first_name': 1,
                         'last_name': 1,
+                        'email': 1,
                         'role': 1
                     }
                 )
@@ -162,8 +89,23 @@ def register_owner_handlers(bot: TeleBot):
                 if not admin_list:
                     bot.reply_to(message, "📝 No admins found to demote.")
                     return
+
+                # Create markup
+                markup = types.InlineKeyboardMarkup()
+                for admin in admin_list:
+                    # Format admin info in one line
+                    full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
+                    email = admin.get('email', 'N/A')
+                    user_id = admin.get('user_id')
+                    
+                    # Single button with all info
+                    markup.add(
+                        types.InlineKeyboardButton(
+                            f"👤 {full_name} | 📧 {email}",
+                            callback_data=f"demote_{user_id}"
+                        )
+                    )
                 
-                markup = create_admin_list_markup(admin_list)
                 bot.reply_to(message, 
                     "👥 *Select an admin to demote:*",
                     reply_markup=markup,
@@ -174,7 +116,7 @@ def register_owner_handlers(bot: TeleBot):
                 
         except Exception as e:
             bot.reply_to(message, f"❌ Error removing admin: {e}")
-
+            
     @bot.callback_query_handler(func=lambda call: call.data.startswith('demote_'))
     def handle_admin_demotion(call):
         try:
@@ -227,6 +169,33 @@ def register_owner_handlers(bot: TeleBot):
             )
         except Exception as e:
             print(f"Failed to notify former admin: {e}")
+
+    def promote_to_admin(bot, db, chat_id, member_id):
+        """Helper function to promote a member to admin"""
+        user = db.users.find_one({'user_id': member_id})
+        
+        if not user:
+            raise Exception("User not found.")
+            
+        if user.get('role') != Role.MEMBER.name.lower():
+            raise Exception("User is not a member.")
+            
+        db.users.update_one(
+            {'user_id': member_id},
+            {'$set': {'role': Role.ADMIN.name.lower()}}
+        )
+        
+        bot.send_message(chat_id, f"✅ User {member_id} has been promoted to admin.")
+        
+        try:
+            notify_user(
+                bot,
+                NotificationType.PROMOTION_TO_ADMIN,
+                member_id,
+                issuer_id=chat_id
+            )
+        except Exception as e:
+            print(f"Failed to notify new admin: {e}")
 
     @bot.message_handler(commands=['listadmins'])
     @check_owner(bot, db)

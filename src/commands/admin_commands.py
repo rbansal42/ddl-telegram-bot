@@ -175,11 +175,14 @@ def register_admin_handlers(bot: TeleBot):
                 # Create inline keyboard with member buttons
                 markup = types.InlineKeyboardMarkup()
                 for member in member_list:
-                    username = f"@{member.get('username', 'N/A')}"
-                    name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
-                    button_text = f"{name} ({username})"
-                    callback_data = f"remove_{member['user_id']}"
-                    markup.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
+                    email = member.get('email', 'N/A')
+                    markup.add(
+                        types.InlineKeyboardButton(
+                            f"👤 {full_name} | 📧 {email}",
+                            callback_data=f"remove_{member['user_id']}"
+                        )
+                    )
                 
                 bot.reply_to(message, 
                     "👥 *Select a member to remove:*",

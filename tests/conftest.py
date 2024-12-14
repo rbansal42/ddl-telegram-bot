@@ -2,7 +2,6 @@ import os
 import sys
 import pytest
 from dotenv import load_dotenv
-from src.database.db import BotDB
 from src.database.mongo_db import MongoDB
 
 # Add project root to Python path
@@ -26,4 +25,4 @@ def test_mongo():
     yield db
     # Cleanup: Drop test database
     db.client.drop_database('test_ddl_bot_db')
-    db.close() 
+    db.close()
