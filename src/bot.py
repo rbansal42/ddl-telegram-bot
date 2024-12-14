@@ -12,6 +12,8 @@ from telebot.handler_backends import State, StatesGroup
 from telebot.types import BotCommand
 from src.database.mongo_db import MongoDB
 from telebot.storage import StateMemoryStorage
+from src.commands.owner_commands import register_owner_handlers
+from src.commands.member_commands import register_member_handlers
 
 # Specify the path to the .env file if it's not in the current directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -30,6 +32,8 @@ register_basic_handlers(bot, db=db)
 register_fun_handlers(bot)
 register_google_drive_handlers(bot)
 register_registration_handlers(bot)
+register_owner_handlers(bot)
+register_member_handlers(bot)
 
 # Signal handler for graceful shutdown
 def signal_handler(signum, frame):
