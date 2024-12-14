@@ -32,7 +32,8 @@ class BotDB:
             self._create_connection()
         return self._local.cursor
     def init_db(self):
-        # Users table with registration status and role
+        """Initialize database tables"""
+        # Users table
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -42,8 +43,8 @@ class BotDB:
                 email TEXT,
                 registration_status TEXT DEFAULT 'pending',
                 role TEXT DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 approved_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (approved_by) REFERENCES users(user_id)
             )
         ''')
@@ -51,28 +52,12 @@ class BotDB:
         # Registration requests table
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS registration_requests (
-                request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 status TEXT DEFAULT 'pending',
-                admin_response TEXT,
+                response TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed_at TIMESTAMP,
-                processed_by INTEGER,
-                FOREIGN KEY (user_id) REFERENCES users(user_id),
-                FOREIGN KEY (processed_by) REFERENCES users(user_id)
-            )
-        ''')
-
-        # Folders table
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS folders (
-                folder_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                drive_url TEXT NOT NULL,
-                event_date DATE,
-                created_by INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users(user_id)
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         ''')
 
@@ -139,36 +124,53 @@ class BotDB:
             return False
 
     def get_pending_registrations(self):
-        self.cursor.execute('''
-            SELECT u.user_id, u.username, u.first_name, u.last_name, 
-                   u.email, u.organization, u.registration_reason, r.request_id
-            FROM users u
-            JOIN registration_requests r ON u.user_id = r.user_id
-            WHERE r.status = 'pending'
-        ''')
-        return self.cursor.fetchall()
+        """Get all pending registration requests with user details"""
+        try:
+            self.cursor.execute('''
+                SELECT u.user_id, u.username, u.first_name, u.last_name, 
+                       u.email, r.status, r.id
+                FROM users u
+                JOIN registration_requests r ON u.user_id = r.user_id
+                WHERE r.status = 'pending'
+            ''')
+            return self.cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting pending registrations: {e}")
+            return []
 
     def process_registration(self, request_id, admin_id, approved, response):
+        """Process a registration request (approve/reject)"""
         try:
-            status = 'approved' if approved else 'rejected'
+            # Get user_id from request
+            self.cursor.execute(
+                'SELECT user_id FROM registration_requests WHERE id = ?',
+                (request_id,)
+            )
+            result = self.cursor.fetchone()
+            if not result:
+                print(f"No registration request found with id {request_id}")
+                return False
+            
+            user_id = result[0]
+            
+            # Update registration request status
             self.cursor.execute('''
                 UPDATE registration_requests 
-                SET status = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP,
-                    admin_response = ?
-                WHERE request_id = ?
-            ''', (status, admin_id, response, request_id))
+                SET status = ?, response = ? 
+                WHERE id = ?
+            ''', ('approved' if approved else 'rejected', response, request_id))
             
+            # Update user status if approved
             if approved:
                 self.cursor.execute('''
                     UPDATE users 
-                    SET registration_status = 'approved', approved_by = ?
-                    WHERE user_id = (
-                        SELECT user_id FROM registration_requests WHERE request_id = ?
-                    )
-                ''', (admin_id, request_id))
+                    SET registration_status = ?, approved_by = ? 
+                    WHERE user_id = ?
+                ''', ('approved', admin_id, user_id))
             
             self.conn.commit()
             return True
+            
         except Exception as e:
             print(f"Error processing registration: {e}")
             return False
@@ -183,20 +185,6 @@ class BotDB:
             return True
         except Exception as e:
             print(f"Error adding user: {e}")
-            return False
-
-    def log_folder_creation(self, folder_id: str, name: str, url: str, user_id: int, event_date: str = None) -> bool:
-        try:
-            self.cursor.execute('''
-                INSERT INTO folders (folder_id, name, drive_url, created_by, event_date)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (folder_id, name, url, user_id, event_date))
-            
-            self.log_action(user_id, 'create_folder', f"Created folder: {name} for event date: {event_date}")
-            self.conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error logging folder creation: {e}")
             return False
 
     def log_action(self, user_id: int, action_type: str, action_data: str) -> bool:
