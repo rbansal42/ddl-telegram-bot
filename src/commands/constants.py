@@ -14,7 +14,6 @@ CMD_DOG = 'dog'
 CMD_SPACE = 'space'
 CMD_MEME = 'meme'
 CMD_FUNNY = 'funny'
-CMD_SET_PHOTO = 'setphoto'
 CMD_MYID = 'myid'
 
 # Bot commands list
@@ -30,6 +29,5 @@ BOT_COMMANDS = [
     BotCommand(CMD_SPACE, "Get a random space GIF"),
     BotCommand(CMD_MEME, "Get a random meme GIF"),
     BotCommand(CMD_FUNNY, "Get a random funny GIF"),
-    BotCommand(CMD_SET_PHOTO, "Change bot's profile picture"),
     BotCommand(CMD_MYID, "Get your Telegram ID")
 ] 
