@@ -10,6 +10,7 @@ from src.commands import (
 )
 from src.database.db import BotDB
 from src.middleware.auth import check_registration
+from src.utils.user_actions import log_action, ActionType
 
 # Define the scope for Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -38,15 +39,37 @@ def register_google_drive_handlers(bot: TeleBot):
     @bot.message_handler(commands=[CMD_NEWEVENTFOLDER])
     @check_registration(bot, db)
     def handle_gdrive_command(message):
-        # Log user if not exists
-        db.add_user(
-            message.from_user.id,
-            message.from_user.username,
-            message.from_user.first_name,
-            message.from_user.last_name
-        )
-        msg = bot.reply_to(message, "📅 Please enter the event date (YYYY-MM-DD):")
-        bot.register_next_step_handler(msg, process_event_date)
+        try:
+            user_id = message.from_user.id
+            
+            # Log user if not exists
+            db.add_user(
+                message.from_user.id,
+                message.from_user.username,
+                message.from_user.first_name,
+                message.from_user.last_name
+            )
+            
+            log_action(
+                ActionType.FOLDER_CREATED,
+                user_id,
+                metadata={
+                    'status': 'started',
+                    'command': 'neweventfolder'
+                }
+            )
+            
+            msg = bot.reply_to(message, "📅 Please enter the event date (YYYY-MM-DD):")
+            bot.register_next_step_handler(msg, process_event_date)
+            
+        except Exception as e:
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'neweventfolder'}
+            )
+            bot.reply_to(message, f"❌ An error occurred: {str(e)}")
 
     def process_event_date(message):
         try:
@@ -116,7 +139,14 @@ def register_google_drive_handlers(bot: TeleBot):
 
             response += "\nℹ️ Send `/getlink <number>` to get the link of the folder."
 
-            db.log_action(message.from_user.id, 'list_folders', 'Listed all folders')
+            log_action(
+                ActionType.FOLDER_LISTED,
+                message.from_user.id,
+                metadata={
+                    'folders_count': len(folders),
+                    'chat_id': message.chat.id
+                }
+            )
             bot.reply_to(message, response, parse_mode="Markdown")
         except Exception as e:
             db.log_action(message.from_user.id, 'error', f"Listing folders failed: {str(e)}")
