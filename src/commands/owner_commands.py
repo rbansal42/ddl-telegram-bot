@@ -6,6 +6,16 @@ from src.middleware.auth import check_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
 
+def create_member_markup(members):
+    markup = types.InlineKeyboardMarkup()
+    for member in members:
+        button = types.InlineKeyboardButton(
+            text=f"@{member.get('username', member['user_id'])}",
+            callback_data=f"promote_{member['user_id']}"
+        )
+        markup.add(button)
+    return markup
+
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
     
