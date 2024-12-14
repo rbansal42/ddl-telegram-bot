@@ -3,6 +3,7 @@ from telebot import TeleBot, types
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_owner
+from src.utils.notifications import notify_user, NotificationType
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
@@ -68,7 +69,12 @@ def register_owner_handlers(bot: TeleBot):
     def handle_admin_promotion(call):
         """Handle admin promotion from inline keyboard"""
         try:
-            if not check_owner(bot, db)(lambda: True)(call.message):
+            # Check if user is owner
+            user_id = call.from_user.id
+            user = db.users.find_one({'user_id': user_id})
+            
+            if not user or user.get('role') != Role.OWNER.name.lower():
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
                 return
             
             _, user_id = call.data.split('_')
@@ -101,9 +107,12 @@ def register_owner_handlers(bot: TeleBot):
             
             # Notify the new admin
             try:
-                bot.send_message(user_id, 
-                    "🎉 Congratulations! You have been promoted to admin.\n"
-                    "Use /help to see available admin commands.")
+                notify_user(
+                    bot,
+                    NotificationType.PROMOTION_TO_ADMIN,
+                    user_id,
+                    issuer_id=chat_id
+                )
             except Exception as e:
                 print(f"Failed to notify new admin: {e}")
                 
@@ -141,9 +150,12 @@ def register_owner_handlers(bot: TeleBot):
             
             # Notify the user
             try:
-                bot.send_message(admin_id, 
-                    "ℹ️ Your admin privileges have been revoked.\n"
-                    "You now have regular member access.")
+                notify_user(
+                    bot,
+                    NotificationType.DEMOTION_TO_MEMBER,
+                    admin_id,
+                    issuer_id=message.from_user.id
+                )
             except Exception as e:
                 print(f"Failed to notify former admin: {e}")
                 

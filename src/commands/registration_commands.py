@@ -3,6 +3,8 @@ import re
 from telebot import TeleBot, types
 from src.database.mongo_db import MongoDB
 from src.commands import CMD_REGISTER
+from src.utils.notifications import notify_user
+from src.utils.notifications import NotificationType
 
 def register_registration_handlers(bot: TeleBot):
     db = MongoDB()
@@ -157,15 +159,19 @@ def register_registration_handlers(bot: TeleBot):
                 
                 # Notify user about their registration status
                 if action == 'approve':
-                    bot.send_message(user_id, 
-                        "🎉 *Congratulations!* Your registration has been approved!\n"
-                        "You now have access to all bot features. Use /help to see available commands.",
-                        parse_mode="Markdown")
+                    notify_user(
+                        bot,
+                        NotificationType.REGISTRATION_APPROVED,
+                        user_id,
+                        issuer_id=admin_id
+                    )
                 else:
-                    bot.send_message(user_id,
-                        "❌ Your registration request has been rejected.\n"
-                        "Please contact an administrator for more information.",
-                        parse_mode="Markdown")
+                    notify_user(
+                        bot,
+                        NotificationType.REGISTRATION_REJECTED,
+                        user_id,
+                        issuer_id=admin_id
+                    )
             else:
                 print(f"❌ Failed to {action} registration")
                 bot.answer_callback_query(call.id, f"Error processing registration {action}.")

@@ -122,7 +122,8 @@ def test_process_registration(test_db):
     """Test processing (approving/rejecting) registration requests"""
     # Setup test user and registration request
     user_id = 123456789
-    admin_id = int(os.getenv('ADMIN_ID'))
+    admin_ids_str = os.getenv('ADMIN_IDS', '')
+    admin_id = int(admin_ids_str.split(',')[0])  # Use first admin ID
     
     test_db.add_user(
         user_id=user_id,
