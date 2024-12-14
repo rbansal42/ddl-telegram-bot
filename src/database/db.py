@@ -76,7 +76,7 @@ class BotDB:
         self.conn.commit()
 
     def init_admin(self):
-        admin_id = os.getenv("ADMIN_ID")
+        admin_id = os.getenv("ADMIN_IDS")
         if not admin_id:
             raise ValueError("ADMIN_ID not set in environment variables")
         

@@ -80,30 +80,30 @@ class MongoDB:
         self.user_actions.create_index('timestamp')
 
     def init_admin(self):
-        """Initialize admin user with complete details"""
-        admin_id = os.getenv("ADMIN_ID")
-        if not admin_id:
-            raise ValueError("ADMIN_ID not set in environment variables")
+        """Initialize owner user with complete details"""
+        owner_id = os.getenv("OWNER_ID")
+        if not owner_id:
+            raise ValueError("OWNER_ID not set in environment variables")
         
         try:
-            # Split admin name into first and last name
-            full_name = os.getenv("ADMIN_NAME", "Rahul Bansal")
+            # Split owner name into first and last name
+            full_name = os.getenv("OWNER_NAME", "Rahul Bansal")
             name_parts = full_name.split(maxsplit=1)
             first_name = name_parts[0]
             last_name = name_parts[1] if len(name_parts) > 1 else ''
 
             self.users.update_one(
-                {'user_id': int(admin_id)},
+                {'user_id': int(owner_id)},
                 {
                     '$set': {
-                        'user_id': int(admin_id),
-                        'username': os.getenv("ADMIN_USERNAME", "rbansal42"),
-                        'email': os.getenv("ADMIN_EMAIL", "rtrrahulbansal@gmail.com"),
+                        'user_id': int(owner_id),
+                        'username': os.getenv("OWNER_USERNAME", "rbansal42"),
+                        'email': os.getenv("OWNER_EMAIL", "rtrrahulbansal@gmail.com"),
                         'first_name': first_name,
                         'last_name': last_name,
                         'registration_status': 'approved',
                         'role': Role.OWNER.name.lower(),
-                        'approved_by': int(admin_id),
+                        'approved_by': int(owner_id),
                         'created_at': datetime.now(UTC),
                         'approved_at': datetime.now(UTC)
                     }
@@ -111,7 +111,7 @@ class MongoDB:
                 upsert=True
             )
         except Exception as e:
-            print(f"Error initializing admin: {e}")
+            print(f"Error initializing owner: {e}")
 
     def close(self):
         """Close MongoDB connection"""
