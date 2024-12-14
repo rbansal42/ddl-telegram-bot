@@ -9,9 +9,21 @@ from src.utils.user_actions import log_action, ActionType
 def create_member_markup(members):
     markup = types.InlineKeyboardMarkup()
     for member in members:
+        full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
         button = types.InlineKeyboardButton(
-            text=f"@{member.get('username', member['user_id'])}",
+            text=f"{full_name}: {member['user_id']}",
             callback_data=f"promote_{member['user_id']}"
+        )
+        markup.add(button)
+    return markup
+
+def create_admin_markup(admins):
+    markup = types.InlineKeyboardMarkup()
+    for admin in admins:
+        full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+        button = types.InlineKeyboardButton(
+            text=f"{full_name}: {admin['user_id']}",
+            callback_data=f"demote_{admin['user_id']}"
         )
         markup.add(button)
     return markup
@@ -131,47 +143,81 @@ def register_owner_handlers(bot: TeleBot):
     @check_owner(bot, db)
     def remove_admin(message):
         """Remove an admin user"""
-        args = message.text.split()
-        if len(args) != 2:
-            bot.reply_to(message, "⚠️ Usage: /removeadmin <user_id>")
-            return
-            
         try:
-            admin_id = int(args[1])
-            user = db.users.find_one({'user_id': admin_id})
-            
-            if not user:
-                bot.reply_to(message, "❌ User not found.")
-                return
+            args = message.text.split()
+            if len(args) == 1:  # No user_id provided
+                admins = db.users.find({'role': Role.ADMIN.name.lower()})
+                admin_list = list(admins)
                 
-            if user.get('role') != Role.ADMIN.name.lower():
-                bot.reply_to(message, "⚠️ User is not an admin.")
-                return
+                if not admin_list:
+                    bot.reply_to(message, "📝 No admins found to demote.")
+                    return
                 
-            # Update user role to member
-            db.users.update_one(
-                {'user_id': admin_id},
-                {'$set': {'role': Role.MEMBER.name.lower()}}
-            )
-            
-            bot.reply_to(message, f"✅ Admin privileges removed from user {admin_id}.")
-            
-            # Notify the user
-            try:
-                notify_user(
-                    bot,
-                    NotificationType.DEMOTION_TO_MEMBER,
-                    admin_id,
-                    issuer_id=message.from_user.id
-                )
-            except Exception as e:
-                print(f"Failed to notify former admin: {e}")
+                markup = create_admin_markup(admin_list)
+                bot.reply_to(message, 
+                    "👥 *Select an admin to demote:*",
+                    reply_markup=markup,
+                    parse_mode="Markdown")
+            else:
+                admin_id = int(args[1])
+                demote_to_member(bot, db, message.from_user.id, admin_id)
                 
-        except ValueError:
-            bot.reply_to(message, "❌ Invalid user ID format.")
         except Exception as e:
             bot.reply_to(message, f"❌ Error removing admin: {e}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('demote_'))
+    def handle_admin_demotion(call):
+        try:
+            user_id = call.from_user.id
+            user = db.users.find_one({'user_id': user_id})
             
+            if not user or user.get('role') != Role.OWNER.name.lower():
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
+                return
+            
+            _, admin_id = call.data.split('_')
+            admin_id = int(admin_id)
+            
+            demote_to_member(bot, db, call.message.chat.id, admin_id)
+            
+            bot.edit_message_text(
+                f"✅ Admin demotion completed.",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown"
+            )
+            bot.answer_callback_query(call.id)
+            
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    def demote_to_member(bot, db, chat_id, admin_id):
+        """Helper function to demote an admin to member"""
+        user = db.users.find_one({'user_id': admin_id})
+        
+        if not user:
+            raise Exception("User not found.")
+            
+        if user.get('role') != Role.ADMIN.name.lower():
+            raise Exception("User is not an admin.")
+            
+        db.users.update_one(
+            {'user_id': admin_id},
+            {'$set': {'role': Role.MEMBER.name.lower()}}
+        )
+        
+        bot.send_message(chat_id, f"✅ User {admin_id} has been demoted to member.")
+        
+        try:
+            notify_user(
+                bot,
+                NotificationType.DEMOTION_TO_MEMBER,
+                admin_id,
+                issuer_id=chat_id
+            )
+        except Exception as e:
+            print(f"Failed to notify former admin: {e}")
+
     @bot.message_handler(commands=['listadmins'])
     @check_owner(bot, db)
     def list_admins(message):

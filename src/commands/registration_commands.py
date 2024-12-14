@@ -109,23 +109,53 @@ def register_registration_handlers(bot: TeleBot):
             if not pending:
                 bot.reply_to(message, "No pending registrations.")
                 return
-                
+            
+            # Send header message
+            bot.reply_to(message, "📝 *Pending Registration Requests:*\n", parse_mode="Markdown")
+            
+            # Create separate message for each registration with inline keyboard
             for user_id, username, first_name, last_name, email, status, request_id in pending:
                 markup = types.InlineKeyboardMarkup()
-                markup.row(
-                    types.InlineKeyboardButton("✅ Approve", callback_data=f"approve_{request_id}"),
-                    types.InlineKeyboardButton("❌ Reject", callback_data=f"reject_{request_id}")
+                
+                # Create user info button (non-functional, just for display)
+                full_name = f"{first_name} {last_name}".strip()
+                info_button = types.InlineKeyboardButton(
+                    text=f"👤 {full_name} (@{username})",
+                    callback_data=f"info_{request_id}"  # This won't do anything
                 )
+                
+                # Create email button (non-functional, just for display)
+                email_button = types.InlineKeyboardButton(
+                    text=f"📧 {email}",
+                    callback_data=f"email_{request_id}"  # This won't do anything
+                )
+                
+                # Create action buttons
+                approve_button = types.InlineKeyboardButton(
+                    "✅ Approve",
+                    callback_data=f"approve_{request_id}"
+                )
+                reject_button = types.InlineKeyboardButton(
+                    "❌ Reject",
+                    callback_data=f"reject_{request_id}"
+                )
+                
+                # Add buttons to markup
+                markup.add(info_button)  # First row
+                markup.add(email_button)  # Second row
+                markup.row(approve_button, reject_button)  # Third row
                 
                 text = (
-                    f"📝 Registration Request #{request_id}\n"
-                    f"User ID: {user_id}\n"
-                    f"Username: @{username}\n"
-                    f"Name: {first_name} {last_name}\n"
-                    f"Email: {email}"
+                    f"*Registration Request #{request_id}*\n"
+                    f"User ID: `{user_id}`"
                 )
                 
-                bot.send_message(message.chat.id, text, reply_markup=markup)
+                bot.send_message(
+                    message.chat.id,
+                    text,
+                    reply_markup=markup,
+                    parse_mode="Markdown"
+                )
                 
         except Exception as e:
             print(f"❌ Error in list_pending_registrations: {e}")
