@@ -154,3 +154,111 @@ def test_space_command():
             "http://example.com/space.gif",
             caption="Here's your random space GIF! 🚀"
         ) 
+
+def test_meme_command():
+    """Test /meme command"""
+    bot = Mock()
+    meme_handler = None
+    
+    def message_handler_mock(*args, **kwargs):
+        def decorator(func):
+            nonlocal meme_handler
+            if kwargs.get('commands') == [CMD_MEME]:
+                meme_handler = func
+            return func
+        return decorator
+    
+    bot.message_handler = message_handler_mock
+    
+    with patch('requests.get') as mock_get:
+        mock_get.return_value.json.return_value = {
+            "data": {"images": {"original": {"url": "http://example.com/meme.gif"}}}
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        
+        register_fun_handlers(bot)
+        
+        assert meme_handler is not None, "Meme handler not registered"
+        
+        message = Mock()
+        message.chat.id = 123456789
+        
+        meme_handler(message)
+        
+        bot.send_animation.assert_called_once_with(
+            message.chat.id, 
+            "http://example.com/meme.gif",
+            caption="Here's your random meme GIF! 😄"
+        )
+
+def test_funny_command():
+    """Test /funny command"""
+    bot = Mock()
+    funny_handler = None
+    
+    def message_handler_mock(*args, **kwargs):
+        def decorator(func):
+            nonlocal funny_handler
+            if kwargs.get('commands') == [CMD_FUNNY]:
+                funny_handler = func
+            return func
+        return decorator
+    
+    bot.message_handler = message_handler_mock
+    
+    with patch('requests.get') as mock_get:
+        mock_get.return_value.json.return_value = {
+            "data": {"images": {"original": {"url": "http://example.com/funny.gif"}}}
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        
+        register_fun_handlers(bot)
+        
+        assert funny_handler is not None, "Funny handler not registered"
+        
+        message = Mock()
+        message.chat.id = 123456789
+        
+        funny_handler(message)
+        
+        bot.send_animation.assert_called_once_with(
+            message.chat.id, 
+            "http://example.com/funny.gif",
+            caption="Here's your random funny GIF! 😂"
+        )
+
+def test_api_error_handling():
+    """Test error handling for all fun commands"""
+    commands = [
+        (CMD_MEME, "Sorry, couldn't fetch a meme GIF! 😅"),
+        (CMD_FUNNY, "Sorry, couldn't fetch a funny GIF! 😅"),
+        (CMD_SPACE, "Sorry, couldn't fetch a space GIF! 🚀"),
+        (CMD_DOG, "Sorry, couldn't fetch a dog GIF! 🐕"),
+    ]
+    
+    for cmd, error_msg in commands:
+        bot = Mock()
+        handler = None
+        
+        def message_handler_mock(*args, **kwargs):
+            def decorator(func):
+                nonlocal handler
+                if kwargs.get('commands') == [cmd]:
+                    handler = func
+                return func
+            return decorator
+        
+        bot.message_handler = message_handler_mock
+        
+        with patch('requests.get') as mock_get:
+            # Mock API error
+            mock_get.side_effect = Exception("API Error")
+            
+            register_fun_handlers(bot)
+            
+            assert handler is not None, f"{cmd} handler not registered"
+            
+            message = Mock()
+            handler(message)
+            
+            bot.reply_to.assert_called_once_with(message, error_msg)
