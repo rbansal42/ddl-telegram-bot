@@ -4,6 +4,7 @@ from telebot import TeleBot
 from src.commands import (
     CMD_DOG, CMD_SPACE, CMD_MEME, CMD_FUNNY, CMD_CAT
 )
+from src.utils.user_actions import log_action, ActionType
 
 def register_fun_handlers(bot: TeleBot):
     def _fetch_random_gif(tag: str, message_on_error: str):
@@ -24,10 +25,33 @@ def register_fun_handlers(bot: TeleBot):
 
     @bot.message_handler(commands=[CMD_DOG])
     def send_dog_gif(message):
-        gif_url = _fetch_random_gif("dog", "Sorry, couldn't fetch a dog GIF! 🐕")
-        if gif_url:
-            bot.send_animation(message.chat.id, gif_url, caption="Here's your random dog GIF! 🐕")
-        else:
+        try:
+            gif_url = _fetch_random_gif("dog", "Sorry, couldn't fetch a dog GIF! 🐕")
+            if gif_url:
+                log_action(
+                    ActionType.COMMAND_SUCCESS,
+                    message.from_user.id,
+                    metadata={
+                        'command': 'dog',
+                        'chat_id': message.chat.id
+                    }
+                )
+                bot.send_animation(message.chat.id, gif_url, caption="Here's your random dog GIF! 🐕")
+            else:
+                log_action(
+                    ActionType.COMMAND_FAILED,
+                    message.from_user.id,
+                    error_message="Failed to fetch GIF",
+                    metadata={'command': 'dog'}
+                )
+                bot.reply_to(message, "Sorry, couldn't fetch a dog GIF! 🐕")
+        except Exception as e:
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'dog'}
+            )
             bot.reply_to(message, "Sorry, couldn't fetch a dog GIF! 🐕")
 
     @bot.message_handler(commands=[CMD_SPACE])
@@ -56,8 +80,32 @@ def register_fun_handlers(bot: TeleBot):
             
     @bot.message_handler(commands=[CMD_CAT])
     def send_cat_gif(message):
-        gif_url = _fetch_random_gif('cat', 'Sorry, couldn\'t fetch a cat GIF! 😿')
-        if gif_url:
-            bot.send_animation(message.chat.id, gif_url, caption="Here's your random cat GIF! 😺")
-        else:
-            bot.reply_to(message, "Sorry, couldn't fetch a cat GIF! 😿")
+        try:
+            # Call cat API
+            response = requests.get('https://api.thecatapi.com/v1/images/search')
+            if response.status_code == 200:
+                cat_url = response.json()[0]['url']
+                
+                log_action(
+                    ActionType.COMMAND_CAT,
+                    message.from_user.id,
+                    metadata={
+                        'chat_id': message.chat.id,
+                        'success': True
+                    }
+                )
+                bot.send_photo(message.chat.id, cat_url)
+            else:
+                raise Exception("Failed to fetch cat image")
+                
+        except Exception as e:
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={
+                    'command': 'cat',
+                    'chat_id': message.chat.id
+                }
+            )
+            bot.reply_to(message, "😿 Failed to fetch a cat picture. Try again later!")
