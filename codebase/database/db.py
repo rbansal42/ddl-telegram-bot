@@ -1,14 +1,36 @@
 import sqlite3
 from datetime import datetime
 from typing import Optional, List, Dict
+import threading
+import os
+
 
 class BotDB:
+    _instance = None
+    _local = threading.local()
+
     def __init__(self, db_file='bot.db'):
         self.db_file = db_file
-        self.conn = sqlite3.connect(db_file)
-        self.cursor = self.conn.cursor()
+        self._create_connection()
         self.init_db()
+        self.init_admin()
 
+    def _create_connection(self):
+        if not hasattr(self._local, 'conn'):
+            self._local.conn = sqlite3.connect(self.db_file, check_same_thread=False)
+            self._local.cursor = self._local.conn.cursor()
+
+    @property
+    def conn(self):
+        if not hasattr(self._local, 'conn'):
+            self._create_connection()
+        return self._local.conn
+
+    @property
+    def cursor(self):
+        if not hasattr(self._local, 'cursor'):
+            self._create_connection()
+        return self._local.cursor
     def init_db(self):
         # Users table with registration status and role
         self.cursor.execute('''
@@ -18,10 +40,8 @@ class BotDB:
                 first_name TEXT,
                 last_name TEXT,
                 email TEXT,
-                organization TEXT,
-                registration_reason TEXT,
-                registration_status TEXT DEFAULT 'pending',  -- pending, approved, rejected
-                role TEXT DEFAULT 'user',  -- admin, moderator, user
+                registration_status TEXT DEFAULT 'pending',
+                role TEXT DEFAULT 'user',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 approved_by INTEGER,
                 FOREIGN KEY (approved_by) REFERENCES users(user_id)
@@ -42,10 +62,65 @@ class BotDB:
                 FOREIGN KEY (processed_by) REFERENCES users(user_id)
             )
         ''')
+
+        # Folders table
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS folders (
+                folder_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                drive_url TEXT NOT NULL,
+                event_date DATE,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(user_id)
+            )
+        ''')
+
+        # User actions log table
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action_type TEXT,
+                action_data TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        ''')
+
         self.conn.commit()
 
-    def create_registration_request(self, user_id, email, organization, reason):
+    def init_admin(self):
+        admin_id = os.getenv("ADMIN_ID")
+        if not admin_id:
+            raise ValueError("ADMIN_ID not set in environment variables")
+        
         try:
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO users 
+                (user_id, registration_status, role, approved_by) 
+                VALUES (?, 'approved', 'admin', ?)
+            ''', (int(admin_id), int(admin_id)))
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error initializing admin: {e}")
+
+    def close(self):
+        if hasattr(self._local, 'conn'):
+            self._local.conn.close()
+            del self._local.conn
+            del self._local.cursor
+
+    def __del__(self):
+        self.close()
+
+    def create_registration_request(self, user_id, email, full_name):
+        try:
+            # Split full name into first and last name
+            name_parts = full_name.split(maxsplit=1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+
             self.cursor.execute('''
                 INSERT INTO registration_requests (user_id, status)
                 VALUES (?, 'pending')
@@ -53,9 +128,9 @@ class BotDB:
             
             self.cursor.execute('''
                 UPDATE users 
-                SET email = ?, organization = ?, registration_reason = ?
+                SET email = ?, first_name = ?, last_name = ?
                 WHERE user_id = ?
-            ''', (email, organization, reason, user_id))
+            ''', (email, first_name, last_name, user_id))
             
             self.conn.commit()
             return True
@@ -136,27 +211,15 @@ class BotDB:
             print(f"Error logging action: {e}")
             return False
 
-    def get_user_folders(self, user_id: int) -> List[Dict]:
-        self.cursor.execute('''
-            SELECT folder_id, name, drive_url, event_date, created_at 
-            FROM folders 
-            WHERE created_by = ?
-            ORDER BY event_date DESC, created_at DESC
-        ''', (user_id,))
-        
-        columns = ['folder_id', 'name', 'drive_url', 'event_date', 'created_at']
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
-
-    def get_folders_by_date_range(self, start_date: str, end_date: str) -> List[Dict]:
-        self.cursor.execute('''
-            SELECT folder_id, name, drive_url, event_date, created_at 
-            FROM folders 
-            WHERE event_date BETWEEN ? AND ?
-            ORDER BY event_date ASC
-        ''', (start_date, end_date))
-        
-        columns = ['folder_id', 'name', 'drive_url', 'event_date', 'created_at']
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
-
-    def close(self):
-        self.conn.close() 
+    def is_user_registered(self, user_id: int) -> bool:
+        try:
+            self.cursor.execute('''
+                SELECT registration_status 
+                FROM users 
+                WHERE user_id = ?
+            ''', (user_id,))
+            result = self.cursor.fetchone()
+            return result is not None and result[0] == 'approved'
+        except Exception as e:
+            print(f"Error checking user registration: {e}")
+            return False
