@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: telegram_drive
+Version: 0.1.0
+Requires-Dist: python-telegram-bot
+Requires-Dist: pymongo
+Requires-Dist: python-dotenv
+Requires-Dist: google-auth
+Requires-Dist: google-api-python-client
