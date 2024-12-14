@@ -4,6 +4,7 @@ from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_owner
 from src.utils.notifications import notify_user, NotificationType
+from src.utils.user_actions import log_action, ActionType
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
@@ -12,10 +13,9 @@ def register_owner_handlers(bot: TeleBot):
     @check_owner(bot, db)
     def add_admin(message):
         """Add a new admin user"""
-        args = message.text.split()
-        if len(args) == 1:  # No user_id provided
-            try:
-                # Get all members
+        try:
+            args = message.text.split()
+            if len(args) == 1:  # No user_id provided
                 members = db.users.find({
                     'registration_status': 'approved',
                     'role': Role.MEMBER.name.lower()
@@ -23,46 +23,44 @@ def register_owner_handlers(bot: TeleBot):
                 member_list = list(members)
                 
                 if not member_list:
+                    log_action(
+                        ActionType.COMMAND_FAILED,
+                        message.from_user.id,
+                        error_message="No members found",
+                        metadata={'command': 'addadmin'}
+                    )
                     bot.reply_to(message, "📝 No registered members found to promote.")
                     return
-                    
+                
                 # Create inline keyboard with member buttons
-                markup = types.InlineKeyboardMarkup()
-                for member in member_list:
-                    username = f"@{member.get('username', 'N/A')}"
-                    name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
-                    button_text = f"{name} ({username})"
-                    callback_data = f"promote_{member['user_id']}"
-                    markup.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+                markup = create_member_markup(member_list)
+                
+                log_action(
+                    ActionType.ADMIN_COMMAND,
+                    message.from_user.id,
+                    metadata={
+                        'command': 'addadmin',
+                        'action': 'list_displayed'
+                    }
+                )
                 
                 bot.reply_to(message, 
                     "👥 *Select a member to promote to admin:*",
                     reply_markup=markup,
                     parse_mode="Markdown")
                 
-            except Exception as e:
-                bot.reply_to(message, f"❌ Error listing members: {e}")
-                return
-        else:
-            # Original logic for when user_id is provided
-            try:
+            else:
                 new_admin_id = int(args[1])
-                user = db.users.find_one({'user_id': new_admin_id})
+                promote_to_admin(bot, db, message.from_user.id, new_admin_id)
                 
-                if not user:
-                    bot.reply_to(message, "❌ User not found. They must register first.")
-                    return
-                    
-                if user.get('role') == Role.ADMIN.name.lower():
-                    bot.reply_to(message, "⚠️ User is already an admin.")
-                    return
-                    
-                promote_to_admin(bot, db, message.chat.id, new_admin_id)
-                
-            except ValueError:
-                bot.reply_to(message, "❌ Invalid user ID format.")
-            except Exception as e:
-                bot.reply_to(message, f"❌ Error adding admin: {e}")
+        except Exception as e:
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'addadmin'}
+            )
+            bot.reply_to(message, f"❌ Error adding admin: {e}")
 
     # Add new callback handler for promotion buttons
     @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
