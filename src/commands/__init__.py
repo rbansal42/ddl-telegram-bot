@@ -14,7 +14,7 @@ BOT_COMMANDS = [
     BotCommand("space", "Get a random space GIF"),
     BotCommand("meme", "Get a random meme GIF"),
     BotCommand("funny", "Get a random funny GIF"),
-    BotCommand("setphoto", "Change bot's profile picture"),
+    BotCommand("ownerhelp", "Show all owner-level commands"),
 ]
 
 
@@ -30,9 +30,8 @@ CMD_DOG = "dog"
 CMD_SPACE = "space"
 CMD_MEME = "meme"
 CMD_FUNNY = "funny"
-CMD_SET_PHOTO = "setphoto"
 CMD_MYID = "myid"
-
+CMD_OWNERHELP = "ownerhelp"
 BotStates = {
     "waiting_for_name": "waiting_for_name",
     "waiting_for_email": "waiting_for_email"
