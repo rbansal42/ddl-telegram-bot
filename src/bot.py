@@ -10,7 +10,7 @@ from src.commands.google_drive_commands import register_google_drive_handlers
 from src.commands import BOT_COMMANDS
 from telebot.handler_backends import State, StatesGroup
 from telebot.types import BotCommand
-from database.db import BotDB
+from src.database.mongo_db import MongoDB
 from telebot.storage import StateMemoryStorage
 
 # Specify the path to the .env file if it's not in the current directory
@@ -23,7 +23,7 @@ bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), state_storage=state_stora
 bot.set_my_commands(BOT_COMMANDS)  # Register commands with Telegram
 
 # Initialize the database
-db = BotDB()
+db = MongoDB()
 
 # Register all command handlers
 register_basic_handlers(bot, db=db)

@@ -1,132 +1,97 @@
 import os
 import re
 from telebot import TeleBot, types
-from src.database.db import BotDB
+from src.database.mongo_db import MongoDB
 from src.commands import CMD_REGISTER
 
 def register_registration_handlers(bot: TeleBot):
-    db = BotDB()
+    db = MongoDB()
     
     def is_admin(user_id):
         admin_ids_str = os.getenv("ADMIN_IDS", "")
+        owner_id = os.getenv("OWNER_ID")
         admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+        if owner_id:
+            admin_ids.append(int(owner_id))
         return user_id in admin_ids
     
     @bot.message_handler(commands=[CMD_REGISTER])
-    def start_registration(message: types.Message):
-        """Handler for the initial /register command"""
-        try:
-            # Get user info
-            user_id = message.from_user.id
-            username = message.from_user.username
-            first_name = message.from_user.first_name
-            last_name = message.from_user.last_name
-            
-            print(f"\n=== Starting Registration Process ===")
-            print(f"User ID: {user_id}")
-            print(f"Username: {username}")
-            print(f"First Name: {first_name}")
-            print(f"Last Name: {last_name}")
-            
-            # Check if user is already registered
-            if db.is_user_registered(user_id):
-                print(f"❌ User {user_id} is already registered")
-                bot.reply_to(message, "You are already registered! 🎉")
-                return
-            
-            # Add basic user info to database
-            success = db.add_user(
-                user_id=user_id,
-                username=username,
-                first_name=first_name,
-                last_name=last_name
-            )
-            
-            if success:
-                print(f"✅ Successfully added user {user_id} to database")
-            else:
-                print(f"❌ Failed to add user {user_id} to database")
-            
-            # Send welcome message and register next step
-            msg = bot.reply_to(
-                message,
-                "🎉 Registration process started!\n\nPlease enter your full name:"
-            )
-            
-            # Register the next step handler
-            bot.register_next_step_handler(msg, process_name)
-            
-        except Exception as e:
-            print(f"❌ Error in start_registration: {e}")
-            bot.reply_to(message, "❌ Sorry, an error occurred. Please try again later.")
-
-    def process_name(message: types.Message):
-        """Handler for processing the name input"""
-        print(f"\n=== Processing Name ===")
-        print(f"User ID: {message.from_user.id}")
-        print(f"Received name: {message.text}")
+    def handle_register(message):
+        """Handle initial registration command"""
+        user_id = message.from_user.id
         
-        try:
-            name = message.text.strip()
-            if len(name) < 2:
-                print("❌ Name too short, asking again")
-                msg = bot.reply_to(message, "Please enter a valid name (at least 2 characters).")
-                bot.register_next_step_handler(msg, process_name)
-                return
-
-            print(f"✅ Valid name received: {name}")
-            # Ask for email
-            msg = bot.reply_to(
-                message, 
-                f"Thanks {name}! Now please enter your email address:"
-            )
-            # Pass the name to the next handler
-            bot.register_next_step_handler(msg, process_email, name=name)
+        # Check if user is already registered
+        if db.is_user_registered(user_id):
+            bot.reply_to(message,
+                "✅ You are already registered and approved!")
+            return
             
-        except Exception as e:
-            print(f"❌ Error in process_name: {e}")
-            bot.reply_to(message, "❌ Sorry, an error occurred. Please try again.")
-
-    def process_email(message: types.Message, name: str):
-        """Handler for processing the email input"""
-        print(f"\n=== Processing Email ===")
-        print(f"User ID: {message.from_user.id}")
-        print(f"Name: {name}")
-        print(f"Received email: {message.text}")
+        # Check for existing pending request
+        existing = db.registration_requests.find_one({
+            'user_id': user_id,
+            'status': 'pending'
+        })
         
-        try:
-            email = message.text.strip()
+        if existing:
+            bot.reply_to(message, 
+                "⚠️ You already have a pending registration request.\n"
+                "Please wait for admin approval.")
+            return
             
-            # Basic email validation
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_pattern, email):
-                print("❌ Invalid email format, asking again")
-                msg = bot.reply_to(message, "Please enter a valid email address.")
-                bot.register_next_step_handler(msg, process_email, name=name)
-                return
+        bot.reply_to(message, 
+            "📝 Registration process started!\n"
+            "Please enter your full name (First Last):")
+        bot.register_next_step_handler(message, process_fullname)
 
-            print(f"✅ Valid email received: {email}")
-            print("Creating registration request...")
+    def process_fullname(message):
+        """Process full name input"""
+        full_name = message.text.strip()
+        if len(full_name.split()) < 2:
+            bot.reply_to(message, 
+                "⚠️ Please enter your full name (First Last):")
+            bot.register_next_step_handler(message, process_fullname)
+            return
             
-            # Create registration request in database
-            success = db.create_registration_request(message.from_user.id, email, name)
+        user_data = {
+            'user_id': message.from_user.id,
+            'username': message.from_user.username,
+            'first_name': full_name.split()[0],
+            'last_name': ' '.join(full_name.split()[1:]),
+            'full_name': full_name
+        }
+        bot.reply_to(message, 
+            "📧 Please enter your email address:")
+        bot.register_next_step_handler(message, process_email, user_data)
+
+    def process_email(message, user_data):
+        """Process email input and create registration request"""
+        email = message.text.strip()
+        if '@' not in email:
+            bot.reply_to(message, 
+                "⚠️ Please enter a valid email address:")
+            bot.register_next_step_handler(message, process_email, user_data)
+            return
             
-            if success:
-                print("✅ Registration request created successfully")
-                bot.reply_to(
-                    message,
-                    f"✅ Registration submitted successfully!\n\n"
-                    f"Name: {name}\n"
-                    f"Email: {email}\n\n"
-                    f"Your registration will be reviewed by an admin."
-                )
-            else:
-                print("❌ Failed to create registration request")
-                bot.reply_to(message, "❌ Sorry, there was an error submitting your registration.")
+        # Create registration request
+        success = db.create_registration_request(
+            user_id=user_data['user_id'],
+            username=user_data['username'],
+            first_name=user_data['first_name'],
+            last_name=user_data['last_name'],
+            email=email
+        )
+        
+        if success:
+            bot.reply_to(message,
+                "✅ Registration request submitted!\n"
+                "An admin will review your request shortly.")
             
-        except Exception as e:
-            print(f"❌ Error in process_email: {e}")
-            bot.reply_to(message, "❌ Sorry, an error occurred. Please try again.")
+            # Notify admins
+            notify_admins_about_registration(user_data['user_id'])
+        else:
+            bot.reply_to(message,
+                "❌ Error submitting registration request.\n"
+                "Please try again later or contact support.")
 
     @bot.message_handler(commands=['pending'])
     def list_pending_registrations(message: types.Message):
@@ -165,43 +130,60 @@ def register_registration_handlers(bot: TeleBot):
             bot.reply_to(message, "❌ Error fetching pending registrations.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('approve_', 'reject_')))
-    def handle_registration_decision(call: types.CallbackQuery):
-        """Handler for registration approval/rejection callbacks"""
+    def handle_registration_decision(call):
         try:
-            if not is_admin(call.from_user.id):
-                bot.answer_callback_query(call.id, "❌ You are not authorized to do this.")
-                return
-                
             action, request_id = call.data.split('_')
-            request_id = int(request_id)
+            admin_id = call.from_user.id
             
-            print(f"\n=== Processing Registration Decision ===")
-            print(f"Action: {action}")
-            print(f"Request ID: {request_id}")
-            
-            success = db.process_registration(
+            if not is_admin(admin_id):
+                bot.answer_callback_query(call.id, "⛔️ You don't have permission to do this.")
+                return
+
+            success, user_id = db.process_registration(
                 request_id=request_id,
-                admin_id=call.from_user.id,
+                admin_id=admin_id,
                 approved=(action == 'approve'),
-                response=f"Registration {action}d by admin"
+                response=f"{action.capitalize()}d by admin"
             )
-            
+
             if success:
-                print(f"✅ Successfully {action}d registration")
-                bot.edit_message_reply_markup(
-                    call.message.chat.id,
-                    call.message.message_id,
-                    reply_markup=None
-                )
+                status = '✅ Approved' if action == 'approve' else '❌ Rejected'
                 bot.edit_message_text(
-                    f"{call.message.text}\n\n{'✅ Approved' if action == 'approve' else '❌ Rejected'} by admin.",
+                    f"Registration {status}",
                     call.message.chat.id,
                     call.message.message_id
                 )
+                bot.answer_callback_query(call.id, f"Registration {action}d successfully!")
+                
+                # Notify user about their registration status
+                if action == 'approve':
+                    bot.send_message(user_id, 
+                        "🎉 *Congratulations!* Your registration has been approved!\n"
+                        "You now have access to all bot features. Use /help to see available commands.",
+                        parse_mode="Markdown")
+                else:
+                    bot.send_message(user_id,
+                        "❌ Your registration request has been rejected.\n"
+                        "Please contact an administrator for more information.",
+                        parse_mode="Markdown")
             else:
                 print(f"❌ Failed to {action} registration")
                 bot.answer_callback_query(call.id, f"Error processing registration {action}.")
-                
+            
         except Exception as e:
             print(f"❌ Error in handle_registration_decision: {e}")
-            bot.answer_callback_query(call.id, "❌ Error processing your decision.")
+            bot.answer_callback_query(call.id, "Error processing registration.")
+
+    def notify_admins_about_registration(user_id):
+        """Notify admins (except owner) about new registration request"""
+        admin_ids_str = os.getenv("ADMIN_IDS", "")
+        owner_id = int(os.getenv("OWNER_ID", "0"))  # Owner's ID
+        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip() and int(id.strip()) != owner_id]
+        
+        for admin_id in admin_ids:
+            try:
+                bot.send_message(admin_id, 
+                    f"🔔 New registration request from user {user_id}\n"
+                    f"Use /pending to review registration requests.")
+            except Exception as e:
+                print(f"Failed to notify admin {admin_id}: {e}")

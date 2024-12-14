@@ -1,5 +1,5 @@
 from functools import wraps
-from src.database.db import BotDB
+from src.database.mongo_db import MongoDB
 
 def check_registration(bot, db):
     def decorator(func):

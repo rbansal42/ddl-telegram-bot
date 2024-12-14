@@ -1,11 +1,11 @@
 import os
 from telebot import TeleBot
-from src.database.db import BotDB
+from src.database.mongo_db import MongoDB
 from src.commands.constants import (
     CMD_START, CMD_HELP, BOT_COMMANDS, CMD_REGISTER, CMD_MYID
 )
 
-def register_basic_handlers(bot: TeleBot, db: BotDB):
+def register_basic_handlers(bot: TeleBot, db: MongoDB):
     def is_admin(user_id):
         admin_ids_str = os.getenv("ADMIN_IDS", "")
         admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
