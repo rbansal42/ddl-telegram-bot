@@ -3,13 +3,13 @@ import telebot
 import signal
 import sys
 from dotenv import load_dotenv
-from commands.basic_commands import register_basic_handlers
-from commands.fun_commands import register_fun_handlers
-from commands.google_drive_commands import register_google_drive_handlers
-from commands.registration_commands import register_registration_handlers
+from src.commands.basic_commands import register_basic_handlers
+from src.commands.fun_commands import register_fun_handlers
+from src.commands.registration_commands import register_registration_handlers
+from src.commands.google_drive_commands import register_google_drive_handlers
+from src.commands import BOT_COMMANDS
 from telebot.handler_backends import State, StatesGroup
 from telebot.types import BotCommand
-from commands import BOT_COMMANDS, BotStates
 from database.db import BotDB
 from telebot.storage import StateMemoryStorage
 
