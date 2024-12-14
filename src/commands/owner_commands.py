@@ -198,6 +198,7 @@ def register_owner_handlers(bot: TeleBot):
             "addadmin": "Add a new admin user",
             "removeadmin": "Remove an admin user",
             "listadmins": "List all admin users",
+            "pending": "List all pending registrations",
             "ownerhelp": "Show this help message"
         }
         
