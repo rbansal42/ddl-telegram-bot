@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from src.commands.basic_commands import register_basic_handlers
 from src.commands.fun_commands import register_fun_handlers
 from src.commands.registration_commands import register_registration_handlers
-from src.commands.google_drive_commands import register_google_drive_handlers
 from src.commands import BOT_COMMANDS
 from telebot.handler_backends import State, StatesGroup
 from telebot.types import BotCommand
@@ -30,7 +29,6 @@ db = MongoDB()
 # Register all command handlers
 register_basic_handlers(bot, db=db)
 register_fun_handlers(bot)
-register_google_drive_handlers(bot)
 register_registration_handlers(bot)
 register_owner_handlers(bot)
 register_admin_handlers(bot)

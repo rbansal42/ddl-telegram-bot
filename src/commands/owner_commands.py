@@ -5,28 +5,7 @@ from src.database.roles import Role, Permissions
 from src.middleware.auth import check_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
-
-def create_member_markup(members):
-    markup = types.InlineKeyboardMarkup()
-    for member in members:
-        full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
-        button = types.InlineKeyboardButton(
-            text=f"{full_name}: {member['user_id']}",
-            callback_data=f"promote_{member['user_id']}"
-        )
-        markup.add(button)
-    return markup
-
-def create_admin_markup(admins):
-    markup = types.InlineKeyboardMarkup()
-    for admin in admins:
-        full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
-        button = types.InlineKeyboardButton(
-            text=f"{full_name}: {admin['user_id']}",
-            callback_data=f"demote_{admin['user_id']}"
-        )
-        markup.add(button)
-    return markup
+from src.utils.markup_helpers import create_promotion_markup, create_admin_list_markup
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
@@ -38,31 +17,52 @@ def register_owner_handlers(bot: TeleBot):
         try:
             args = message.text.split()
             if len(args) == 1:  # No user_id provided
-                members = db.users.find({
+                # Add debug logging
+                print("\n=== Finding Members for Admin Promotion ===")
+                
+                # Get members query
+                members_query = {
                     'registration_status': 'approved',
                     'role': Role.MEMBER.name.lower()
-                })
+                }
+                print(f"Query parameters: {members_query}")
+                
+                # Execute query
+                members = db.users.find(members_query)
                 member_list = list(members)
+                print(f"Found {len(member_list)} members")
                 
                 if not member_list:
+                    error_msg = "No registered members found to promote"
+                    print(f"Error: {error_msg}")
+                    
                     log_action(
                         ActionType.COMMAND_FAILED,
                         message.from_user.id,
-                        error_message="No members found",
-                        metadata={'command': 'addadmin'}
+                        error_message=error_msg,
+                        metadata={
+                            'command': 'addadmin',
+                            'query': members_query
+                        }
                     )
                     bot.reply_to(message, "📝 No registered members found to promote.")
                     return
                 
-                # Create inline keyboard with member buttons
-                markup = create_member_markup(member_list)
+                # Debug: Print found members
+                for member in member_list:
+                    print(f"Member found: ID={member.get('user_id')}, "
+                          f"Role={member.get('role')}, "
+                          f"Status={member.get('registration_status')}")
+                
+                markup = create_promotion_markup(member_list)
                 
                 log_action(
                     ActionType.ADMIN_COMMAND,
                     message.from_user.id,
                     metadata={
                         'command': 'addadmin',
-                        'action': 'list_displayed'
+                        'action': 'list_displayed',
+                        'members_found': len(member_list)
                     }
                 )
                 
@@ -76,6 +76,7 @@ def register_owner_handlers(bot: TeleBot):
                 promote_to_admin(bot, db, message.from_user.id, new_admin_id)
                 
         except Exception as e:
+            print(f"❌ Error in add_admin: {e}")
             log_action(
                 ActionType.COMMAND_FAILED,
                 message.from_user.id,
@@ -146,14 +147,23 @@ def register_owner_handlers(bot: TeleBot):
         try:
             args = message.text.split()
             if len(args) == 1:  # No user_id provided
-                admins = db.users.find({'role': Role.ADMIN.name.lower()})
+                admins = db.users.find(
+                    {'role': Role.ADMIN.name.lower()},
+                    {
+                        'user_id': 1,
+                        'username': 1,
+                        'first_name': 1,
+                        'last_name': 1,
+                        'role': 1
+                    }
+                )
                 admin_list = list(admins)
                 
                 if not admin_list:
                     bot.reply_to(message, "📝 No admins found to demote.")
                     return
                 
-                markup = create_admin_markup(admin_list)
+                markup = create_admin_list_markup(admin_list)
                 bot.reply_to(message, 
                     "👥 *Select an admin to demote:*",
                     reply_markup=markup,

@@ -20,17 +20,6 @@ def setup_test_env():
     os.environ['MONGODB_DB_NAME'] = 'test_ddl_bot_db'
 
 @pytest.fixture(scope="function")
-def test_db():
-    """Fixture for SQLite test database"""
-    test_db_file = 'test_bot.db'
-    db = BotDB(db_file=test_db_file)
-    yield db
-    db.close()
-    # Cleanup
-    if os.path.exists(test_db_file):
-        os.remove(test_db_file)
-
-@pytest.fixture(scope="function")
 def test_mongo():
     """Fixture for MongoDB test database"""
     db = MongoDB()

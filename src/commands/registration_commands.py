@@ -5,6 +5,7 @@ from src.database.mongo_db import MongoDB
 from src.commands import CMD_REGISTER
 from src.utils.notifications import notify_user
 from src.utils.notifications import NotificationType
+from src.utils.markup_helpers import create_registration_markup
 
 def register_registration_handlers(bot: TeleBot):
     db = MongoDB()
@@ -113,41 +114,26 @@ def register_registration_handlers(bot: TeleBot):
             # Send header message
             bot.reply_to(message, "📝 *Pending Registration Requests:*\n", parse_mode="Markdown")
             
-            # Create separate message for each registration with inline keyboard
-            for user_id, username, first_name, last_name, email, status, request_id in pending:
-                markup = types.InlineKeyboardMarkup()
-                
-                # Create user info button (non-functional, just for display)
-                full_name = f"{first_name} {last_name}".strip()
-                info_button = types.InlineKeyboardButton(
-                    text=f"👤 {full_name} (@{username})",
-                    callback_data=f"info_{request_id}"  # This won't do anything
-                )
-                
-                # Create email button (non-functional, just for display)
-                email_button = types.InlineKeyboardButton(
-                    text=f"📧 {email}",
-                    callback_data=f"email_{request_id}"  # This won't do anything
-                )
-                
-                # Create action buttons
-                approve_button = types.InlineKeyboardButton(
-                    "✅ Approve",
-                    callback_data=f"approve_{request_id}"
-                )
-                reject_button = types.InlineKeyboardButton(
-                    "❌ Reject",
-                    callback_data=f"reject_{request_id}"
-                )
-                
-                # Add buttons to markup
-                markup.add(info_button)  # First row
-                markup.add(email_button)  # Second row
-                markup.row(approve_button, reject_button)  # Third row
+            # Convert pending registrations to list of dictionaries
+            pending_list = [
+                {
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'username': username,
+                    'full_name': f"{first_name} {last_name}".strip(),
+                    'email': email,
+                    'status': status
+                }
+                for user_id, username, first_name, last_name, email, status, request_id in pending
+            ]
+            
+            # Create markup for each registration request
+            for request in pending_list:
+                markup = create_registration_markup([request])  # Pass as single-item list
                 
                 text = (
-                    f"*Registration Request #{request_id}*\n"
-                    f"User ID: `{user_id}`"
+                    f"*Registration Request #{request['request_id']}*\n"
+                    f"User ID: `{request['user_id']}`"
                 )
                 
                 bot.send_message(
