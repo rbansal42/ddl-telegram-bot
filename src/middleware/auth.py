@@ -1,5 +1,6 @@
 from functools import wraps
 from src.database.mongo_db import MongoDB
+from src.database.roles import Role
 
 def check_registration(bot, db):
     def decorator(func):
@@ -23,3 +24,38 @@ def check_registration(bot, db):
             return func(message, *args, **kwargs)
         return wrapper
     return decorator 
+
+def check_owner(bot, db):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(message, *args, **kwargs):
+            user_id = message.from_user.id
+            user = db.users.find_one({'user_id': user_id})
+            
+            if not user or user.get('role') != Role.OWNER.name.lower():
+                bot.reply_to(message, 
+                    "⛔️ This command is only available to the bot owner.")
+                return
+                
+            return func(message, *args, **kwargs)
+        return wrapper
+    return decorator
+
+def check_admin_or_owner(bot, db):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(message, *args, **kwargs):
+            user_id = message.from_user.id
+            user = db.users.find_one({'user_id': user_id})
+            
+            if not user or (
+                user.get('role') != Role.ADMIN.name.lower() and 
+                user.get('role') != Role.OWNER.name.lower()
+            ):
+                bot.reply_to(message, 
+                    "⛔️ This command is only available to admins and owner.")
+                return
+                
+            return func(message, *args, **kwargs)
+        return wrapper
+    return decorator
