@@ -1,7 +1,7 @@
 import os
 import requests
 from telebot import TeleBot
-from commands import (
+from src.commands import (
     CMD_DOG, CMD_SPACE, CMD_MEME, CMD_FUNNY, CMD_CAT
 )
 
