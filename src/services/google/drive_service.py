@@ -413,3 +413,28 @@ class GoogleDriveService:
         except Exception as e:
             print(f"[DEBUG] Error in upload_file: {str(e)}")
             raise Exception(f"Failed to upload file: {str(e)}")
+
+    def folder_exists(self, folder_name: str, parent_id: Optional[str] = None) -> bool:
+        """Check if a folder with the given name exists in the specified parent folder"""
+        try:
+            query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            if parent_id:
+                query += f" and '{parent_id}' in parents"
+            else:
+                query += f" and '{self.root_folder_id}' in parents"
+
+            results = self.service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name)',
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                driveId=self.team_drive_id,
+                corpora='drive'
+            ).execute()
+
+            return len(results.get('files', [])) > 0
+
+        except Exception as e:
+            print(f"Error checking folder existence: {str(e)}")
+            return False

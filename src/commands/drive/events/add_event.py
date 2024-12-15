@@ -54,8 +54,17 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
             date = datetime.now()
             formatted_date = date.strftime('%Y-%m-%d')
             
-            # Create folder name and create in Drive
+            # Create folder name and check if it exists
             folder_name = f"{formatted_date}; {event_name}"
+            if drive_service.folder_exists(folder_name):
+                bot.reply_to(
+                    message,
+                    "❌ An event folder with this name already exists for today.\n"
+                    "Please use a different event name or check existing folders."
+                )
+                return
+            
+            # Create folder in Drive
             folder = drive_service.create_folder(folder_name)
             sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
             
@@ -151,6 +160,15 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
             folder_name = f"{formatted_date}; {user_data['event_name']}"
             print(f"[DEBUG] Creating folder: {folder_name}")
             
+            # Check if folder already exists
+            if drive_service.folder_exists(folder_name):
+                bot.reply_to(
+                    message,
+                    "❌ An event folder with this name already exists for the selected date.\n"
+                    "Please use a different event name or date."
+                )
+                return
+            
             # Create folder in Drive
             folder = drive_service.create_folder(folder_name)
             print(f"[DEBUG] Folder created with ID: {folder['id']}")
@@ -194,8 +212,18 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 date = datetime.now()
                 formatted_date = date.strftime('%Y-%m-%d')
                 
-                # Create folder directly
+                # Create folder name and check if exists
                 folder_name = f"{formatted_date}; {user_data['event_name']}"
+                if drive_service.folder_exists(folder_name):
+                    bot.edit_message_text(
+                        "❌ An event folder with this name already exists for today.\n"
+                        "Please use a different event name or date.",
+                        call.message.chat.id,
+                        call.message.message_id
+                    )
+                    return
+                
+                # Create folder directly
                 folder = drive_service.create_folder(folder_name)
                 sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
                 
