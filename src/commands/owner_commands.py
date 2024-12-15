@@ -1112,15 +1112,22 @@ def register_owner_handlers(bot: TeleBot):
             # Set sharing permissions
             sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
             
-            # Escape special characters for Markdown
-            escaped_name = user_data['event_name'].replace('[', '\\[').replace(']', '\\]').replace('_', '\\_')
-            escaped_url = sharing_url.replace('[', '\\[').replace(']', '\\]').replace('_', '\\_')
+            # Function to escape special characters for MarkdownV2
+            def escape_markdown(text):
+                special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+                for char in special_chars:
+                    text = text.replace(char, f"\\{char}")
+                return text
+            
+            # Escape the texts
+            escaped_name = escape_markdown(user_data['event_name'])
+            escaped_url = escape_markdown(sharing_url)
             
             # Format response
             response = (
                 f"✅ Event folder created successfully\\!\n\n"
-                f"{escaped_name} \\- Pictures\n\n"
-                f"{escaped_url}"
+                f"*Event:* {escaped_name}\n"
+                f"*Link:* {escaped_url}"
             )
             
             bot.reply_to(
