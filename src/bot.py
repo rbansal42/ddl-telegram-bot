@@ -30,10 +30,6 @@ load_dotenv(dotenv_path)
 
 state_storage = StateMemoryStorage()
 
-# Configure timeouts
-apihelper.CONNECT_TIMEOUT = 30
-apihelper.READ_TIMEOUT = 30
-
 # Initialize services
 services = ServiceContainer()
 
@@ -96,7 +92,7 @@ def update_help(message):
         else:
             print("[DEBUG] User not approved - showing public commands only")
             help_text = "📚 *Available Commands:*\n"
-            for command in PUBLIC_COMMANDS:
+            for command in BOT_COMMANDS:
                 help_text += f"/{command.command} - {command.description}\n"
             help_text += "\n*Note:* Additional commands will be available after your registration is approved."
         
