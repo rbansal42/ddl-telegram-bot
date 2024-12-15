@@ -161,16 +161,16 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 return
             
             try:
-                # Update status message
+                # Update the existing upload session message with progress
                 file_count, total_size = state_manager.get_upload_stats(user_id)
                 size_str = format_file_size(total_size)
                 bot.edit_message_text(
-                    f"⏳ Processing uploads...\n"
-                    f"Uploading {file_count} files ({size_str}) to Drive.\n"
-                    f"Please wait while files are being processed.",
+                    f"⏳ *Processing Uploads*\n\n"
+                    f"Preparing to upload {file_count} files ({size_str}) to Drive\.\n"
+                    f"Please wait while files are being processed\.",
                     call.message.chat.id,
                     call.message.message_id,
-                    parse_mode="Markdown"
+                    parse_mode="MarkdownV2"
                 )
                 
                 # Get folder ID from state
@@ -184,12 +184,30 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     'completed_uploads': []
                 })
                 
-                # Initial progress message
-                update_progress_message(bot, call.message.chat.id, call.message.message_id, user_id, state_manager)
-                
-                # Upload files
+                # Upload files and update progress in the same message
                 uploaded_files = []
-                for file in pending_uploads:
+                total_files = len(pending_uploads)
+                
+                for index, file in enumerate(pending_uploads, 1):
+                    # Update progress message
+                    progress_percent = (index / total_files) * 100
+                    progress_bar = "▓" * int(progress_percent/10) + "░" * (10-int(progress_percent/10))
+                    
+                    status_text = (
+                        f"⏳ *Uploading Files*\n\n"
+                        f"Progress: `[{progress_bar}]` {progress_percent:.1f}%\n"
+                        f"File {index}/{total_files}: `{escape_markdown(file['name'])}`\n"
+                        f"Total Size: {escape_markdown(size_str)}"
+                    )
+                    
+                    bot.edit_message_text(
+                        status_text,
+                        call.message.chat.id,
+                        call.message.message_id,
+                        parse_mode="MarkdownV2"
+                    )
+
+                    # Upload the file
                     with open(file['path'], 'rb') as f:
                         file_content = f.read()
                         uploaded_file = drive_service.upload_file(
@@ -201,18 +219,8 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                             **file,
                             'web_link': uploaded_file['webViewLink']
                         })
-                        
-                        # Update progress after each file
-                        state_manager.get_state(user_id)['completed_uploads'].append(file)
-                        update_progress_message(
-                            bot, 
-                            call.message.chat.id, 
-                            call.message.message_id,
-                            user_id,
-                            state_manager
-                        )
                 
-                # Format summary
+                # Format final summary
                 total_size = format_file_size(state_manager.get_upload_stats(user_id)[1])
                 summary = "*Successfully Uploaded Files:*\n"
                 for file in uploaded_files:
@@ -223,15 +231,15 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                         'video': '🎥',
                         'audio': '🎵'
                     }.get(file_type, '📁')
-                    summary += f"{emoji} [{file['name']}]({file['web_link']}) - {file['size']}\n"
-                summary += f"\n*Total Size:* {total_size}"
+                    summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) \\- {escape_markdown(file['size'])}\n"
+                summary += f"\n*Total Size:* {escape_markdown(total_size)}"
                 
-                # Send final message
+                # Update final message
                 bot.edit_message_text(
-                    f"✅ *Upload Complete!*\n\n{summary}",
+                    f"✅ *Upload Complete\\!*\n\n{summary}",
                     call.message.chat.id,
                     call.message.message_id,
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                     disable_web_page_preview=True
                 )
                 
