@@ -6,6 +6,8 @@ from typing import List, Dict, Optional, Tuple
 from enum import Enum
 from dotenv import load_dotenv
 from pathlib import Path
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
 class DriveAccessLevel(Enum):
     NO_ACCESS = "no_access"
@@ -356,3 +358,43 @@ class GoogleDriveService:
             
         except Exception as e:
             raise Exception(f"Failed to set folder permissions: {str(e)}")
+
+    def upload_file(self, file_content: bytes, file_name: str, parent_folder_id: str) -> dict:
+        """
+        Upload a file to Google Drive
+        
+        Args:
+            file_content: The file content in bytes
+            file_name: Name of the file
+            parent_folder_id: ID of the parent folder
+            
+        Returns:
+            dict: The uploaded file's metadata
+        """
+        try:
+            print(f"[DEBUG] Starting file upload: {file_name} to folder: {parent_folder_id}")
+            
+            file_metadata = {
+                'name': file_name,
+                'parents': [parent_folder_id]
+            }
+            
+            media = MediaIoBaseUpload(
+                io.BytesIO(file_content),
+                mimetype='application/octet-stream',
+                resumable=True
+            )
+            
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                supportsAllDrives=True,
+                fields='id, name, mimeType, size, webViewLink'
+            ).execute()
+            
+            print(f"[DEBUG] File uploaded successfully. File ID: {file.get('id')}")
+            return file
+            
+        except Exception as e:
+            print(f"[DEBUG] Error in upload_file: {str(e)}")
+            raise Exception(f"Failed to upload file: {str(e)}")
