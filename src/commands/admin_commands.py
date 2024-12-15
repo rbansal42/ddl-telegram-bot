@@ -170,12 +170,12 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
                 return
                 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
+    @check_admin_or_owner(bot, db)
     def handle_remove_member(call):
         """Handle member removal confirmation"""
         try:
-            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
-                return
-                
+            # Get the ID of who initiated the command
+            admin_id = call.from_user.id
             user_id = int(call.data.split('_')[1])
             member = db.users.find_one({'user_id': user_id})
             
@@ -186,9 +186,9 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
             # Create confirmation markup
             markup = types.InlineKeyboardMarkup()
             confirm_button = types.InlineKeyboardButton(
-                "✅ Confirm Remove", callback_data=f"confirmremove_{user_id}")
+                "✅ Confirm Remove", callback_data=f"confirmremove_{user_id}_{admin_id}")
             cancel_button = types.InlineKeyboardButton(
-                "❌ Cancel", callback_data="cancelremove")
+                "❌ Cancel", callback_data=f"cancelremove_{admin_id}")
             markup.row(confirm_button, cancel_button)
             
             username = f"@{member.get('username', 'N/A')}"
@@ -210,32 +210,34 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
             bot.answer_callback_query(call.id, f"Error: {str(e)}")
             
     @bot.callback_query_handler(func=lambda call: call.data.startswith('confirmremove_'))
+    @check_admin_or_owner(bot, db)
     def handle_remove_confirmation(call):
         """Handle final member removal"""
         try:
-            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
-                return
-                
-            user_id = int(call.data.split('_')[1])
+            # Extract both user_id and admin_id from callback data
+            _, user_id, admin_id = call.data.split('_')
+            user_id = int(user_id)
+            admin_id = int(admin_id)  # This is the original admin who initiated the removal
+            
             member = db.users.find_one({'user_id': user_id})
             
             if not member:
                 bot.answer_callback_query(call.id, "❌ Member not found!")
                 return
-                
+            
             # Remove member
             db.users.delete_one({'user_id': user_id})
             
-            # Notify the removed member
+            # Notify the removed member using the correct admin_id
             try:
                 notify_user(
                     bot,
-                    user_id,
                     NotificationType.ACCESS_REVOKED,
-                    "You have been removed from the system by an admin."
+                    user_id,
+                    f"You have been removed from the system."
                 )
             except Exception as e:
-                print(f"Failed to notify removed member: {e}")
+                pass
             
             bot.edit_message_text(
                 f"✅ Member removed successfully!\n\n"
@@ -269,24 +271,15 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
     def handle_list_admins_pagination(call):
         """Handle pagination for listadmins command"""
         try:
-            # Debug prints
-            print("=== Admins Pagination Handler Debug ===")
-            print(f"Callback received from user ID: {call.from_user.id}")
-            print(f"Callback data: {call.data}")
-
             # Manual admin or owner check
             user = db.users.find_one({'user_id': call.from_user.id})
             if not user or user.get('role') not in [Role.ADMIN.name.lower(), Role.OWNER.name.lower()]:
-                print(f"Access denied for user {call.from_user.id}")
                 bot.answer_callback_query(call.id, "⛔️ This command is only available to admins and owner.")
                 return
-
-            print("Admin or Owner verified, proceeding with pagination")
 
             # Extract the requested page number from callback_data
             _, page_str = call.data.split('_')
             page = int(page_str)
-            print(f"Requested page: {page}")
 
             # Retrieve admins
             admins = list(db.users.find({'role': Role.ADMIN.name.lower()}))
@@ -344,8 +337,6 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
             bot.answer_callback_query(call.id)
 
         except ValueError as ve:
-            print(f"ValueError: {ve}")
             bot.answer_callback_query(call.id, "❌ Invalid page number.")
         except Exception as e:
-            print(f"Error in admins pagination handler: {str(e)}")
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
