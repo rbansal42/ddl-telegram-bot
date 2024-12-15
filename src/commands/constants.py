@@ -1,5 +1,10 @@
+# Standard library imports
 from collections import namedtuple
 
+# Local application imports
+from src.database.roles import Role
+
+# Type definitions
 BotCommand = namedtuple('BotCommand', ['command', 'description'])
 
 # Command constants

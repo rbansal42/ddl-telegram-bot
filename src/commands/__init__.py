@@ -1,7 +1,10 @@
-# codebase/commands/__init__.py
+# Third-party imports
 from telebot.types import BotCommand
 
-# List of available commands for the bot
+# Local application imports
+from src.database.roles import Role
+
+# Bot commands configuration
 BOT_COMMANDS = [
     BotCommand("start", "Start the bot"),
     BotCommand("help", "Show available commands"),
@@ -19,8 +22,7 @@ BOT_COMMANDS = [
     BotCommand("driveinfo", "Get Drive access information"),
 ]
 
-
-# Command names as constants to avoid typos
+# Command name constants
 CMD_START = "start"
 CMD_HELP = "help"
 CMD_REGISTER = "register"

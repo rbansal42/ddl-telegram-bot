@@ -1,21 +1,24 @@
+# Standard library imports
 import os
+
+# Third-party imports
 from telebot import TeleBot, types
+
+# Local application imports
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
-from src.middleware.auth import check_owner
+from src.middleware.auth import check_admin_or_owner
+from src.services.google.drive_service import GoogleDriveService
+from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
-from src.utils.markup_helpers import create_promotion_markup, create_admin_list_markup
-from src.services.google.drive_service import GoogleDriveService
-from src.utils.file_helpers import format_file_size, format_timestamp
-from functools import wraps
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
     drive_service = GoogleDriveService()
     
     @bot.message_handler(commands=['addadmin'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def add_admin(message):
         """Add a new admin user"""
         try:
@@ -71,7 +74,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.reply_to(message, f"❌ Error adding admin: {e}")
 
     @bot.message_handler(commands=['removeadmin'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def remove_admin(message):
         """Remove an admin user"""
         try:
@@ -122,7 +125,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.reply_to(message, f"❌ Error removing admin: {e}")
             
     @bot.callback_query_handler(func=lambda call: call.data.startswith('demote_'))
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def handle_admin_demotion(call):
         """Handle admin demotion to member"""
         try:
@@ -209,7 +212,7 @@ def register_owner_handlers(bot: TeleBot):
             print(f"Failed to notify new admin: {e}")
 
     @bot.message_handler(commands=['listadmins'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def list_admins(message, page: int = 1):
         """List all admin users with pagination"""
         try:
@@ -290,7 +293,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
     @bot.message_handler(commands=['remove_member'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def remove_member(message):
         """Remove a member from the system"""
         args = message.text.split()
@@ -360,11 +363,11 @@ def register_owner_handlers(bot: TeleBot):
                 bot.reply_to(message, f"❌ Error removing member: {e}")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def handle_remove_member(call):
         """Handle member removal confirmation"""
         try:
-            if not check_owner(bot, db)(lambda: True)(call.message):
+            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
                 bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
                 return
                 
@@ -407,7 +410,7 @@ def register_owner_handlers(bot: TeleBot):
     def handle_remove_confirmation(call):
         """Handle the confirmation of member removal"""
         try:
-            if not check_owner(bot, db)(lambda: True)(call.message):
+            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
                 bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
                 return
             
@@ -475,7 +478,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
     @bot.message_handler(commands=['ownerhelp'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def owner_help(message):
         """Show all owner-level commands"""
         help_text = "👑 *Owner Commands:*\n\n"
@@ -529,7 +532,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 
 
     @bot.message_handler(commands=['listteamdrive'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def list_team_drive_contents(message, page: int = 1):
         """List all files and folders in the Team Drive with pagination"""
         try:
@@ -614,7 +617,7 @@ def register_owner_handlers(bot: TeleBot):
             )
 
     @bot.message_handler(commands=['driveinfo'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def get_drive_info(message):
         """Get information about Drive access and status"""
         try:
@@ -648,7 +651,7 @@ def register_owner_handlers(bot: TeleBot):
             bot.reply_to(message, f"❌ Error: {str(e)}") 
 
     @bot.message_handler(commands=['listdrives'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def list_drives(message, page: int = 1):
         """List all shared drives with pagination"""
         try:
@@ -903,7 +906,7 @@ def register_owner_handlers(bot: TeleBot):
                 bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
     @bot.message_handler(commands=['listeventsfolder'])
-    @check_owner(bot, db)
+    @check_admin_or_owner(bot, db)
     def list_events_folder(message, page: int = 1):
         """List contents of the events folder with pagination"""
         try:
@@ -935,7 +938,7 @@ def register_owner_handlers(bot: TeleBot):
             current_items = items[start_idx:end_idx]
     
             # Build the response message
-            response = f"📂 *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
+            response = f"��� *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
             folders = [item for item in current_items if item['mimeType'] == 'application/vnd.google-apps.folder']
             files_only = [item for item in current_items if item['mimeType'] != 'application/vnd.google-apps.folder']
     

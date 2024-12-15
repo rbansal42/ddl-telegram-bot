@@ -1,11 +1,16 @@
+# Standard library imports
 import os
-import re
+
+# Third-party imports
 from telebot import TeleBot, types
-from src.database.mongo_db import MongoDB
+
+# Local application imports
 from src.commands import CMD_REGISTER
-from src.utils.notifications import notify_user
-from src.utils.notifications import NotificationType
+from src.database.mongo_db import MongoDB
+from src.database.roles import Role
 from src.middleware.auth import check_admin_or_owner
+from src.utils.notifications import notify_user, NotificationType
+from src.utils.user_actions import log_action, ActionType
 
 def register_registration_handlers(bot: TeleBot):
     db = MongoDB()

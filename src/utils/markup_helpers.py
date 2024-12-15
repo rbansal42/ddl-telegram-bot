@@ -1,5 +1,12 @@
-from telebot import types
-from typing import List, Dict, Union, Tuple
+# Standard library imports
+from typing import List, Dict, Tuple, Union, Optional
+
+# Third-party imports
+import telebot.types as types
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+# Local application imports
+from src.database.roles import Role
 
 def create_list_markup(
     items: Dict,

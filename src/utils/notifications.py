@@ -1,7 +1,13 @@
+# Standard library imports
 from enum import Enum
 from typing import Optional
+
+# Third-party imports
 from telebot import TeleBot
-from src.database.roles import Role
+
+# Local application imports
+from src.database.mongo_db import MongoDB
+from src.utils.user_actions import log_action, ActionType
 
 class NotificationType(Enum):
     # Role changes

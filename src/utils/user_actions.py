@@ -1,6 +1,9 @@
+# Standard library imports
+from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, Any
-from datetime import datetime
+
+# Local application imports
 from src.database.mongo_db import MongoDB
 
 class ActionType(Enum):

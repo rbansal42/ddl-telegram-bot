@@ -1,8 +1,16 @@
-from functools import wraps
-from src.database.mongo_db import MongoDB
-from src.database.roles import Role
-from telebot import TeleBot, types
+# Standard library imports
 import os
+from functools import wraps
+from typing import Callable, Optional
+
+# Third-party imports
+from telebot import TeleBot
+from telebot.types import Message, types
+
+# Local application imports
+from src.database.mongo_db import MongoDB
+from src.database.roles import Role, Permissions
+from src.utils.user_actions import log_action, ActionType
 
 def check_registration(bot, db):
     def decorator(func):
@@ -41,7 +49,7 @@ def check_owner(bot: TeleBot, db: MongoDB):
 
             # Determine the type of the first argument
             first_arg = args[0]
-            if isinstance(first_arg, types.Message):
+            if isinstance(first_arg, Message):
                 user_id = first_arg.from_user.id
                 is_callback = False
             elif isinstance(first_arg, types.CallbackQuery):

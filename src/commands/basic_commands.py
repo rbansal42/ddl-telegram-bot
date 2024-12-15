@@ -1,9 +1,18 @@
+# Standard library imports
 import os
+
+# Third-party imports
 from telebot import TeleBot
-from src.database.mongo_db import MongoDB
+
+# Local application imports
 from src.commands.constants import (
-    CMD_START, CMD_HELP, BOT_COMMANDS, CMD_REGISTER, CMD_MYID
+    CMD_START, 
+    CMD_HELP, 
+    BOT_COMMANDS, 
+    CMD_REGISTER, 
+    CMD_MYID
 )
+from src.database.mongo_db import MongoDB
 from src.utils.user_actions import log_action, ActionType
 
 def register_basic_handlers(bot: TeleBot, db: MongoDB):
