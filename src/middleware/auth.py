@@ -1,6 +1,8 @@
 from functools import wraps
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role
+from telebot import TeleBot, types
+import os
 
 def check_registration(bot, db):
     def decorator(func):
@@ -25,19 +27,61 @@ def check_registration(bot, db):
         return wrapper
     return decorator 
 
-def check_owner(bot, db):
+def check_owner(bot: TeleBot, db: MongoDB):
+    """
+    Decorator to ensure that only the bot owner can execute the decorated handler.
+    
+    It handles both message handlers and callback query handlers by determining
+    the type of the first argument and extracting the user ID accordingly.
+    """
     def decorator(func):
-        @wraps(func)
-        def wrapper(message, *args, **kwargs):
-            user_id = message.from_user.id
-            user = db.users.find_one({'user_id': user_id})
-            
-            if not user or user.get('role') != Role.OWNER.name.lower():
-                bot.reply_to(message, 
-                    "⛔️ This command is only available to the bot owner.")
+        def wrapper(*args, **kwargs):
+            if not args:
                 return
-                
-            return func(message, *args, **kwargs)
+
+            # Determine the type of the first argument
+            first_arg = args[0]
+            if isinstance(first_arg, types.Message):
+                user_id = first_arg.from_user.id
+                is_callback = False
+            elif isinstance(first_arg, types.CallbackQuery):
+                user_id = first_arg.from_user.id
+                is_callback = True
+            else:
+                # Unsupported handler type
+                return
+
+            # Retrieve the owner ID from environment variables
+            owner_id = 940075808
+            if owner_id is None:
+                # Owner ID not set; optionally, you can log this as an error
+                if is_callback:
+                    bot.answer_callback_query(first_arg.id, "❌ Owner ID is not configured.")
+                else:
+                    bot.reply_to(first_arg, "❌ Owner ID is not configured.")
+                return
+
+            try:
+                owner_id = int(owner_id)
+            except ValueError:
+                # Invalid owner ID format
+                if is_callback:
+                    bot.answer_callback_query(first_arg.id, "❌ Invalid owner ID configuration.")
+                else:
+                    bot.reply_to(first_arg, "❌ Invalid owner ID configuration.")
+                return
+
+            if user_id != owner_id:
+                # User is not the owner; deny access
+                if is_callback:
+                    bot.answer_callback_query(first_arg.id, "⛔️ This command is only available to the bot owner.")
+                else:
+                    bot.reply_to(first_arg, "⛔️ This command is only available to the bot owner.")
+                return
+
+            # User is the owner; proceed to execute the handler
+            return func(*args, **kwargs)
+        
         return wrapper
     return decorator
 
