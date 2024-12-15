@@ -2,7 +2,8 @@
 import os
 
 # Third-party imports
-from telebot import TeleBot, types
+from telebot import TeleBot
+from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 # Local application imports
 from src.database.mongo_db import MongoDB
@@ -39,7 +40,7 @@ def register_owner_handlers(bot: TeleBot):
                     return
 
                 # Create markup
-                markup = types.InlineKeyboardMarkup()
+                markup = InlineKeyboardMarkup()
                 for member in member_list:
                     # Format member info in one line
                     full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
@@ -48,7 +49,7 @@ def register_owner_handlers(bot: TeleBot):
                     
                     # Single button with all info
                     markup.add(
-                        types.InlineKeyboardButton(
+                        InlineKeyboardButton(
                             f"👤 {full_name} | 📧 {email}",
                             callback_data=f"promote_{user_id}"
                         )
@@ -98,7 +99,7 @@ def register_owner_handlers(bot: TeleBot):
                     return
 
                 # Create markup
-                markup = types.InlineKeyboardMarkup()
+                markup = InlineKeyboardMarkup()
                 for admin in admin_list:
                     # Format admin info in one line
                     full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
@@ -107,7 +108,7 @@ def register_owner_handlers(bot: TeleBot):
                     
                     # Single button with all info
                     markup.add(
-                        types.InlineKeyboardButton(
+                        InlineKeyboardButton(
                             f"👤 {full_name} | 📧 {email}",
                             callback_data=f"demote_{user_id}"
                         )
@@ -246,13 +247,13 @@ def register_owner_handlers(bot: TeleBot):
                 )
 
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
 
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listadmins_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listadmins_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listadmins_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listadmins_{page+1}"))
 
             if buttons:
                 markup.row(*buttons)
@@ -311,12 +312,12 @@ def register_owner_handlers(bot: TeleBot):
                     return
                     
                 # Create inline keyboard with member buttons
-                markup = types.InlineKeyboardMarkup()
+                markup = InlineKeyboardMarkup()
                 for member in member_list:
                     full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
                     email = member.get('email', 'N/A')
                     markup.add(
-                        types.InlineKeyboardButton(
+                        InlineKeyboardButton(
                             f"👤 {full_name} | 📧 {email}",
                             callback_data=f"remove_{member['user_id']}"
                         )
@@ -573,13 +574,13 @@ def register_owner_handlers(bot: TeleBot):
                     response += f"📄 [{file['name']}]({file['webViewLink']})\n"
 
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
 
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
 
             if buttons:
                 markup.row(*buttons)
@@ -685,13 +686,13 @@ def register_owner_handlers(bot: TeleBot):
                 )
 
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
 
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
 
             if buttons:
                 markup.row(*buttons)
@@ -762,13 +763,13 @@ def register_owner_handlers(bot: TeleBot):
                 )
 
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
 
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
 
             if buttons:
                 markup.row(*buttons)
@@ -850,13 +851,13 @@ def register_owner_handlers(bot: TeleBot):
                     response += f"📄 [{file['name']}]({file['webViewLink']})\n"
 
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
 
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
 
             if buttons:
                 markup.row(*buttons)
@@ -955,13 +956,13 @@ def register_owner_handlers(bot: TeleBot):
                     response += f"📄 [{file['name']}]({file['webViewLink']}) - {file_size}\n"
     
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
     
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
     
             if buttons:
                 markup.row(*buttons)
@@ -1028,13 +1029,13 @@ def register_owner_handlers(bot: TeleBot):
                     response += f"📄 [{file['name']}]({file['webViewLink']}) - {file_size}\n"
                     
             # Create navigation markup
-            markup = types.InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup()
             buttons = []
             
             if page > 1:
-                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
+                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
             if page < total_pages:
-                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
+                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
                 
             if buttons:
                 markup.row(*buttons)
@@ -1092,7 +1093,7 @@ def register_owner_handlers(bot: TeleBot):
     def process_event_date(message, user_data):
         """Process the event date and create the folder"""
         try:
-            from datetime import datetime
+            from datetime import datetime, timedelta
             
             # Parse and validate date
             try:
@@ -1108,11 +1109,15 @@ def register_owner_handlers(bot: TeleBot):
             # Create folder in Drive
             folder = drive_service.create_folder(folder_name)
             
+            # Set sharing permissions with 5-day expiry
+            sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+            
             # Format response
             response = (
                 f"✅ Event folder created successfully!\n\n"
                 f"{user_data['event_name']} - Pictures\n\n"
-                f"{folder['webViewLink']}"
+                f"{sharing_url}\n\n"
+                "ℹ️ This link will expire in 5 days. Anyone with the link can add content until then."
             )
             
             bot.reply_to(
@@ -1128,7 +1133,8 @@ def register_owner_handlers(bot: TeleBot):
                 message.from_user.id,
                 metadata={
                     'folder_name': folder_name,
-                    'folder_id': folder['id']
+                    'folder_id': folder['id'],
+                    'sharing_expiry': (datetime.utcnow() + timedelta(days=5)).isoformat()
                 }
             )
             

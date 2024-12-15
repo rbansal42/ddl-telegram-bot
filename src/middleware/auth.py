@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 # Third-party imports
 from telebot import TeleBot
-from telebot.types import Message, types
+from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 # Local application imports
 from src.database.mongo_db import MongoDB
@@ -52,7 +52,7 @@ def check_owner(bot: TeleBot, db: MongoDB):
             if isinstance(first_arg, Message):
                 user_id = first_arg.from_user.id
                 is_callback = False
-            elif isinstance(first_arg, types.CallbackQuery):
+            elif isinstance(first_arg, CallbackQuery):
                 user_id = first_arg.from_user.id
                 is_callback = True
             else:
