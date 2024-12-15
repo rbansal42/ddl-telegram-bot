@@ -173,6 +173,18 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 del media_groups[message.media_group_id]
             else:
                 print(f"[DEBUG] Waiting for more media group messages. Current count: {len(group_data['messages'])}")
+                # Schedule processing after timeout
+                def process_delayed():
+                    time.sleep(MEDIA_GROUP_TIMEOUT)
+                    if message.media_group_id in media_groups:
+                        print(f"[DEBUG] Processing media group after timeout")
+                        group_data = media_groups[message.media_group_id]
+                        handle_media_group(group_data['messages'], folder_id, user_id)
+                        del media_groups[message.media_group_id]
+                
+                # Start processing in a separate thread
+                import threading
+                threading.Thread(target=process_delayed).start()
             
             return
         
