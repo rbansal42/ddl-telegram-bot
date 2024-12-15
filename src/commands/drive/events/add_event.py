@@ -1,5 +1,5 @@
 # Standard library imports
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Third-party imports
 from telebot import TeleBot
@@ -11,8 +11,9 @@ from src.middleware.auth import check_event_permission
 from src.services.google.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.message_helpers import escape_markdown
+from src.utils.state_management import UserStateManager
 
-def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
+def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
     """Register event-related command handlers"""
     @bot.message_handler(commands=['addevent'])
     @check_event_permission(bot, db)
@@ -112,6 +113,13 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 }
             )
             
+            state_manager.set_state(message.from_user.id, {
+                'upload_mode': True,
+                'folder_id': folder['id'],
+                'upload_expires_at': datetime.now() + timedelta(minutes=60)
+            })
+            send_upload_instructions(bot, message.chat.id, folder['id'])
+            
         except Exception as e:
             bot.reply_to(message, f"❌ Error creating event folder: {str(e)}")
             log_action(
@@ -168,6 +176,13 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                     }
                 )
                 
+                state_manager.set_state(call.from_user.id, {
+                    'upload_mode': True,
+                    'folder_id': folder['id'],
+                    'upload_expires_at': datetime.now() + timedelta(minutes=60)
+                })
+                send_upload_instructions(bot, call.message.chat.id, folder['id'])
+                
             else:  # custom date
                 msg = bot.edit_message_text(
                     "📅 Please enter the event date in format DD/MM/YYYY:",
@@ -208,3 +223,20 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
         'handle_date_option': handle_date_option,
         'handle_cancel_event': handle_cancel_event
     }
+
+def create_upload_markup():
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("✅ Done", callback_data="upload_done"),
+        InlineKeyboardButton("❌ Cancel Upload", callback_data="upload_cancel")
+    )
+    return markup
+
+def send_upload_instructions(bot, chat_id, folder_id):
+    return bot.send_message(
+        chat_id,
+        "📤 You can now upload files to this folder.\n"
+        "Simply send me any files or media within the next 60 minutes.\n"
+        "Press 'Done' when you're finished or 'Cancel' to stop uploading.",
+        reply_markup=create_upload_markup()
+    )
