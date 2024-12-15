@@ -22,3 +22,6 @@ __pycache__/
 
 # Other ignores...
 *.db
+
+# Google Drive credentials
+**/service-account-key.json

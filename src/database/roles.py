@@ -1,4 +1,5 @@
 from enum import Enum, auto
+import logging
 
 class Role(Enum):
     OWNER = 4
@@ -69,3 +70,23 @@ class Permissions:
     @staticmethod
     def has_permission(role: Role, permission: str) -> bool:
         return Permissions.ROLE_PERMISSIONS.get(role, {}).get(permission, False) 
+
+def remove_user_from_database(user_id: int) -> bool:
+    try:
+        from src.database.mongo_db import MongoDB
+        db = MongoDB()
+        result = db.users.delete_one({'user_id': user_id})
+        return result.deleted_count > 0
+    except Exception as e:
+        logging.error(f"Error removing user from database: {e}")
+        return False 
+
+def is_owner(user_id: int) -> bool:
+    try:
+        from src.database.mongo_db import MongoDB
+        db = MongoDB()
+        user = db.users.find_one({'user_id': user_id})
+        return user is not None and user.get('role') == Role.OWNER.name.lower()
+    except Exception as e:
+        logging.error(f"Error checking owner status: {e}")
+        return False 

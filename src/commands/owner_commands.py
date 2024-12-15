@@ -474,7 +474,7 @@ def register_owner_handlers(bot: TeleBot):
     def list_drive_contents(message):
         """List all files and folders in the Team Drive folder"""
         try:
-            files = drive_service.list_files()
+            files = drive_service.list_team_drive_contents()
             
             if not files:
                 bot.reply_to(message, "📂 No files found in Team Drive.")
@@ -487,28 +487,27 @@ def register_owner_handlers(bot: TeleBot):
             if folders:
                 response += "*Folders:*\n"
                 for folder in folders:
-                    response += f"📁 {folder['name']}\n"
-                    response += f"└ ID: `{folder['id']}`\n\n"
+                    link = folder.get('webViewLink', '')
+                    response += f"📁 [{folder['name']}]({link})\n"
+                response += "\n"
             
             # Then process files
             regular_files = [f for f in files if f['mimeType'] != 'application/vnd.google-apps.folder']
             if regular_files:
                 response += "*Files:*\n"
                 for file in regular_files:
-                    size = format_file_size(int(file.get('size', 0)))
-                    response += f"📄 {file['name']}\n"
-                    response += f"├ ID: `{file['id']}`\n"
-                    response += f"└ Size: {size}\n\n"
+                    link = file.get('webViewLink', '')
+                    response += f"📄 [{file['name']}]({link})\n"
 
             # Split response if needed
             max_length = 4096
             if len(response) <= max_length:
-                bot.reply_to(message, response, parse_mode="Markdown")
+                bot.reply_to(message, response, parse_mode="Markdown", disable_web_page_preview=True)
             else:
                 chunks = [response[i:i + max_length] for i in range(0, len(response), max_length)]
                 for i, chunk in enumerate(chunks, 1):
                     header = f"📋 Team Drive Contents (Part {i}/{len(chunks)}):\n\n"
-                    bot.reply_to(message, header + chunk, parse_mode="Markdown")
+                    bot.reply_to(message, header + chunk, parse_mode="Markdown", disable_web_page_preview=True)
 
         except Exception as e:
             bot.reply_to(message, f"❌ Error listing drive contents: {str(e)}")
