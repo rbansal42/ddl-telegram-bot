@@ -105,3 +105,10 @@ def create_promotion_markup(member: Dict) -> types.InlineKeyboardMarkup:
     ]
     actions = [('⬆️', 'Promote', 'promote')]
     return create_list_markup(member, display_fields, actions, 'user_id') 
+
+def escape_markdown(text: str) -> str:
+    """Escape special characters for MarkdownV2 format"""
+    special_chars = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text 
