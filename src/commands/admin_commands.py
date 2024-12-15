@@ -10,9 +10,10 @@ from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
+from src.utils.markup_helpers import create_navigation_markup
+from src.utils.pagination import paginate_items
 
-def register_admin_handlers(bot: TeleBot):
-    db = MongoDB()
+def register_member_management_handlers(bot: TeleBot, db: MongoDB):
     
     @bot.message_handler(commands=['listmembers'])
     @check_admin_or_owner(bot, db)
@@ -54,22 +55,7 @@ def register_admin_handlers(bot: TeleBot):
                                f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n")
                 return response
                 
-            # Create navigation markup
-            def create_navigation_markup(current_page):
-                markup = types.InlineKeyboardMarkup()
-                buttons = []
-                
-                if current_page > 1:
-                    buttons.append(types.InlineKeyboardButton(
-                        "⬅️ Previous", callback_data=f"members_{current_page-1}"))
-                    
-                if current_page < total_pages:
-                    buttons.append(types.InlineKeyboardButton(
-                        "Next ➡️", callback_data=f"members_{current_page+1}"))
-                    
-                markup.row(*buttons)
-                return markup
-                
+ 
             # Send first page
             bot.reply_to(message, 
                 create_member_page(1), 
@@ -107,21 +93,6 @@ def register_admin_handlers(bot: TeleBot):
                                f"  Username: @{member.get('username', 'N/A')}\n"
                                f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n")
                 return response
-                
-            def create_navigation_markup(current_page):
-                markup = types.InlineKeyboardMarkup()
-                buttons = []
-                
-                if current_page > 1:
-                    buttons.append(types.InlineKeyboardButton(
-                        "⬅️ Previous", callback_data=f"members_{current_page-1}"))
-                    
-                if current_page < total_pages:
-                    buttons.append(types.InlineKeyboardButton(
-                        "Next ➡️", callback_data=f"members_{current_page+1}"))
-                    
-                markup.row(*buttons)
-                return markup
                 
             bot.edit_message_text(
                 create_member_page(page),
@@ -293,117 +264,6 @@ def register_admin_handlers(bot: TeleBot):
         except Exception as e:
             bot.answer_callback_query(call.id, f"Error: {str(e)}")
 
-    @bot.message_handler(commands=['pending'])
-    @check_admin_or_owner(bot, db)
-    def list_pending_registrations(message):
-        """List all pending registration requests"""
-        try:
-            pending = db.registration_requests.find({
-                'status': 'pending'
-            })
-            pending_list = list(pending)
-            
-            if not pending_list:
-                bot.reply_to(message, "📝 No pending registration requests.")
-                return
-                
-            for request in pending_list:
-                user = db.users.find_one({'user_id': request['user_id']})
-                if not user:
-                    continue
-                    
-                markup = types.InlineKeyboardMarkup()
-                markup.row(
-                    types.InlineKeyboardButton("✅ Approve", callback_data=f"approve_{request['_id']}"),
-                    types.InlineKeyboardButton("❌ Reject", callback_data=f"reject_{request['_id']}")
-                )
-                
-                text = (
-                    f"📝 Registration Request\n"
-                    f"User ID: `{user['user_id']}`\n"
-                    f"Username: @{user.get('username', 'N/A')}\n"
-                    f"Name: {user.get('first_name', '')} {user.get('last_name', '')}\n"
-                    f"Email: {user.get('email', 'N/A')}"
-                )
-                
-                bot.send_message(
-                    message.chat.id,
-                    text,
-                    reply_markup=markup,
-                    parse_mode="Markdown"
-                )
-                
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error listing pending requests: {e}")
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith(('approve_', 'reject_')))
-    def handle_registration_decision(call):
-        """Handle registration approval/rejection"""
-        try:
-            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
-                return
-                
-            action, request_id = call.data.split('_')
-            admin_id = call.from_user.id
-            
-            # Get registration request
-            request = db.registration_requests.find_one({'_id': request_id})
-            if not request:
-                bot.answer_callback_query(call.id, "❌ Request not found!")
-                return
-                
-            user_id = request['user_id']
-            
-            # Update registration status
-            if action == 'approve':
-                db.users.update_one(
-                    {'user_id': user_id},
-                    {
-                        '$set': {
-                            'registration_status': 'approved',
-                            'approved_by': admin_id,
-                            'role': Role.MEMBER.name.lower()
-                        }
-                    }
-                )
-                db.registration_requests.update_one(
-                    {'_id': request_id},
-                    {'$set': {'status': 'approved'}}
-                )
-                
-                # Notify user
-                notify_user(
-                    bot,
-                    user_id,
-                    NotificationType.REGISTRATION_APPROVED,
-                    issuer_id=admin_id
-                )
-            else:
-                db.registration_requests.update_one(
-                    {'_id': request_id},
-                    {'$set': {'status': 'rejected'}}
-                )
-                
-                # Notify user
-                notify_user(
-                    bot,
-                    user_id,
-                    NotificationType.REGISTRATION_REJECTED,
-                    issuer_id=admin_id
-                )
-            
-            # Update message
-            status = '✅ Approved' if action == 'approve' else '❌ Rejected'
-            bot.edit_message_text(
-                f"{call.message.text}\n\n{status} by admin.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="Markdown"
-            )
-            bot.answer_callback_query(call.id, f"Registration {action}d successfully!")
-            
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"Error: {str(e)}")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('listadmins_'))
     def handle_list_admins_pagination(call):

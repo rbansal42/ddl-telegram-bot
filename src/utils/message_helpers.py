@@ -1,5 +1,6 @@
 from typing import Union, List, Dict, Any
-from telebot.types import Message, CallbackQuery
+from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup
+from telebot import TeleBot
 
 def escape_markdown(text: Union[str, int, float, None]) -> str:
     """
@@ -81,3 +82,39 @@ def create_list_message(
             continue
             
     return message 
+
+def split_and_send_messages(
+    bot: TeleBot,
+    message: Message,
+    text: str,
+    parse_mode: str = "Markdown",
+    markup: InlineKeyboardMarkup = None,
+    max_length: int = 4096,
+    disable_web_page_preview: bool = True
+) -> List[Message]:
+    """Split and send long messages with proper formatting"""
+    if len(text) <= max_length:
+        return [bot.reply_to(
+            message,
+            text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=disable_web_page_preview,
+            reply_markup=markup
+        )]
+    
+    chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+    sent_messages = []
+    
+    for i, chunk in enumerate(chunks, 1):
+        header = f"📋 Message Part {i}/{len(chunks)}:\n\n"
+        sent_messages.append(
+            bot.reply_to(
+                message,
+                header + chunk,
+                parse_mode=parse_mode,
+                disable_web_page_preview=disable_web_page_preview,
+                reply_markup=markup if i == 1 else None
+            )
+        )
+    
+    return sent_messages

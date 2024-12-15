@@ -112,3 +112,18 @@ def escape_markdown(text: str) -> str:
     for char in special_chars:
         text = text.replace(char, f'\\{char}')
     return text 
+
+def create_navigation_markup(current_page: int, total_pages: int, callback_prefix: str) -> InlineKeyboardMarkup:
+    markup = types.InlineKeyboardMarkup()
+    buttons = []
+    
+    if current_page > 1:
+        buttons.append(types.InlineKeyboardButton(
+            "⬅️ Previous", callback_data=f"{callback_prefix}_{current_page-1}"))
+        
+    if current_page < total_pages:
+        buttons.append(types.InlineKeyboardButton(
+            "Next ➡️", callback_data=f"{callback_prefix}_{current_page+1}"))
+        
+    markup.row(*buttons)
+    return markup 

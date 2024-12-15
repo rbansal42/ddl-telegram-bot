@@ -6,7 +6,6 @@ from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 # Local application imports
-from src.commands.drive import register_drive_handlers
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner, check_event_permission
@@ -17,16 +16,8 @@ from src.utils.user_actions import log_action, ActionType
 from src.utils.message_helpers import escape_markdown, create_list_message
 from src.commands.owner.admin_management import register_admin_handlers
 
-def register_owner_handlers(bot: TeleBot):
+def register_owner_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
     """Register all owner-specific command handlers"""
-    db = MongoDB()
-    
-    # Register admin management handlers
-    admin_handlers = register_admin_handlers(bot)
-    
-    # Register drive management handlers
-    drive_handlers = register_drive_handlers(bot)
-
 
     @bot.message_handler(commands=['remove_member'])
     @check_admin_or_owner(bot, db)
@@ -223,7 +214,7 @@ def register_owner_handlers(bot: TeleBot):
             '/listteamdrive': 'List all files in Team Drive',
             '/driveinfo': 'Get Drive access information',
             '/listdrives': 'List all shared drives',
-            '/listeventsfolder': 'List contents of the events folder',
+            '/listevents': 'List contents of the events folder',
             '/addevent': 'Add a new event folder'
         }
         
@@ -289,9 +280,3 @@ def register_owner_handlers(bot: TeleBot):
             help_text,
             parse_mode="MarkdownV2"
         )
-
-    return {
-        'admin_handlers': admin_handlers,
-        'drive_handlers': drive_handlers
-        # Other handlers...
-    }

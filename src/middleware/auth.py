@@ -112,6 +112,25 @@ def check_admin_or_owner(bot, db):
         return wrapper
     return decorator
 
+def is_admin(user_id: int) -> bool:
+    """Check if a user ID belongs to an admin or owner"""
+    try:
+        admin_ids_str = os.getenv("ADMIN_IDS", "")
+        owner_id = os.getenv("OWNER_ID")
+        
+        # Convert admin IDs string to list of integers
+        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+        
+        # Add owner ID to admin list if configured
+        if owner_id:
+            admin_ids.append(int(owner_id))
+            
+        return user_id in admin_ids
+        
+    except ValueError:
+        # Handle invalid ID format
+        return False
+
 def check_event_permission(bot, db):
     def decorator(func):
         @wraps(func)

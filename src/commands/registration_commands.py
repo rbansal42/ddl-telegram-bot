@@ -11,17 +11,9 @@ from src.database.roles import Role
 from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
+from src.middleware.auth import is_admin
 
-def register_registration_handlers(bot: TeleBot):
-    db = MongoDB()
-    
-    def is_admin(user_id):
-        admin_ids_str = os.getenv("ADMIN_IDS", "")
-        owner_id = os.getenv("OWNER_ID")
-        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
-        if owner_id:
-            admin_ids.append(int(owner_id))
-        return user_id in admin_ids
+def register_registration_handlers(bot: TeleBot, db: MongoDB):
     
     @bot.message_handler(commands=[CMD_REGISTER])
     def handle_register(message):

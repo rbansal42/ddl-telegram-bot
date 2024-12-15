@@ -16,7 +16,18 @@ class DriveAccessLevel(Enum):
     OWNER = "owner"
 
 class GoogleDriveService:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GoogleDriveService, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+            
         # Load environment variables from .env file
         env_path = Path(__file__).parent.parent.parent.parent / '.env'
         load_dotenv(env_path)
@@ -41,6 +52,8 @@ class GoogleDriveService:
             
         self._initialize_service()
         self.verify_drive_access()  # Verify access on initialization
+
+        self._initialized = True
 
     def _initialize_service(self):
         """Initialize the Google Drive service with credentials"""

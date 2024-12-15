@@ -9,16 +9,19 @@ import telebot
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 from telebot.types import BotCommand
+from telebot import TeleBot, apihelper
 
 # Local application imports
 from src.commands import BOT_COMMANDS
-from src.commands.admin_commands import register_admin_handlers
+from src.commands.admin_commands import register_member_management_handlers
 from src.commands.basic_commands import register_basic_handlers
+from src.commands.owner.drive_management import register_drive_handlers
 from src.commands.fun_commands import register_fun_handlers
 from src.commands.member_commands import register_member_handlers
+from src.commands.owner.admin_management import register_admin_handlers
 from src.commands.owner_commands import register_owner_handlers
 from src.commands.registration_commands import register_registration_handlers
-from src.database.mongo_db import MongoDB
+from src.services.service_container import ServiceContainer
 
 # Specify the path to the .env file if it's not in the current directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -26,24 +29,30 @@ load_dotenv(dotenv_path)
 
 state_storage = StateMemoryStorage()
 
-bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), state_storage=state_storage)
+# Configure timeouts
+apihelper.CONNECT_TIMEOUT = 30
+apihelper.READ_TIMEOUT = 30
+
+# Initialize services
+services = ServiceContainer()
+
+# Initialize bot with custom timeout settings
+bot = TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), threaded=True, state_storage=state_storage)
 bot.set_my_commands(BOT_COMMANDS)  # Register commands with Telegram
 
-# Initialize the database
-db = MongoDB()
-
-# Register all command handlers
-register_basic_handlers(bot, db=db)
+# Register all command handlers with services
+register_basic_handlers(bot, services.db)
 register_fun_handlers(bot)
-register_registration_handlers(bot)
-register_owner_handlers(bot)
-register_admin_handlers(bot)
-register_member_handlers(bot)
-
+register_registration_handlers(bot, services.db)
+register_owner_handlers(bot, services.db, services.drive_service)
+register_member_management_handlers(bot, services.db)
+register_member_handlers(bot, services.db)
+register_drive_handlers(bot, services.db, services.drive_service)
+register_admin_handlers(bot, services.db)
 # Signal handler for graceful shutdown
 def signal_handler(signum, frame):
     print('\n🛑 Stopping the bot...')
-    db.close()  # Close all database connections
+    services.close()  # Close all services
     bot.stop_polling()
     sys.exit(0)
 

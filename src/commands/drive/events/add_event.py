@@ -12,18 +12,23 @@ from src.services.google.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.message_helpers import escape_markdown
 
-def register_event_handlers(bot: TeleBot):
+def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
     """Register event-related command handlers"""
-    db = MongoDB()
-    drive_service = GoogleDriveService()
-
     @bot.message_handler(commands=['addevent'])
     @check_event_permission(bot, db)
     def add_event(message):
         """Start the process of adding a new event folder"""
         try:
+            # Create markup with cancel button
+            markup = InlineKeyboardMarkup()
+            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
+            
             # Ask for event name
-            msg = bot.reply_to(message, "📝 Please enter the name of the event:")
+            msg = bot.reply_to(
+                message, 
+                "📝 Please enter the name of the event:",
+                reply_markup=markup
+            )
             bot.register_next_step_handler(msg, process_event_name)
         except Exception as e:
             bot.reply_to(message, f"❌ Error: {str(e)}")
@@ -47,6 +52,7 @@ def register_event_handlers(bot: TeleBot):
                 InlineKeyboardButton("📅 Custom Date", callback_data="date_custom"),
                 InlineKeyboardButton("📆 Today", callback_data="date_today")
             )
+            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
             
             # Ask for date preference
             bot.reply_to(
@@ -173,7 +179,32 @@ def register_event_handlers(bot: TeleBot):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_event")
+    def handle_cancel_event(call):
+        """Handle event creation cancellation"""
+        try:
+            # Edit the message to show cancellation
+            bot.edit_message_text(
+                "❌ Event creation cancelled.",
+                call.message.chat.id,
+                call.message.message_id
+            )
+            
+            # Log the cancellation
+            log_action(
+                ActionType.COMMAND_CANCELLED,
+                call.from_user.id,
+                metadata={'command': 'addevent'}
+            )
+            
+            # Clear any registered next step handlers for this user
+            bot.clear_step_handler_by_chat_id(call.message.chat.id)
+            
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
     return {
         'add_event': add_event,
-        'handle_date_option': handle_date_option
+        'handle_date_option': handle_date_option,
+        'handle_cancel_event': handle_cancel_event
     }

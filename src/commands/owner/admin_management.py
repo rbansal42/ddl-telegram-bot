@@ -12,9 +12,8 @@ from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
 
-def register_admin_handlers(bot: TeleBot):
+def register_admin_handlers(bot: TeleBot, db: MongoDB):
     """Register all admin management related command handlers"""
-    db = MongoDB()
 
     def promote_to_admin(bot: TeleBot, db: MongoDB, chat_id: int, member_id: int) -> None:
         """Helper function to promote a member to admin"""
@@ -279,14 +278,3 @@ def register_admin_handlers(bot: TeleBot):
             bot.answer_callback_query(call.id, "❌ Invalid page number.")
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
-
-    return {
-        'promote_to_admin': promote_to_admin,
-        'demote_to_member': demote_to_member,
-        'add_admin': add_admin,
-        'remove_admin': remove_admin,
-        'list_admins': list_admins,
-        'handle_admin_promotion': handle_admin_promotion,
-        'handle_admin_demotion': handle_admin_demotion,
-        'handle_list_admins_pagination': handle_list_admins_pagination
-    }

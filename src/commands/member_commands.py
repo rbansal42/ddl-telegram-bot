@@ -10,8 +10,7 @@ from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner
 from src.utils.markup_helpers import create_member_list_markup
 
-def register_member_handlers(bot: TeleBot):
-    db = MongoDB()
+def register_member_handlers(bot: TeleBot, db: MongoDB):
     
     @bot.message_handler(commands=['listmembers'])
     @check_admin_or_owner(bot, db)
