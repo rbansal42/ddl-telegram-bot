@@ -1,6 +1,11 @@
+# Standard library imports
 import pytest
 from unittest.mock import Mock
+
+# Local application imports
 from src.middleware.auth import check_registration
+from src.database.roles import Role
+from src.utils.user_actions import ActionType
 
 def test_public_commands(test_db):
     """Test access to public commands"""

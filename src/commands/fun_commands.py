@@ -1,8 +1,18 @@
+# Standard library imports
 import os
+from typing import Optional
+
+# Third-party imports
 import requests
 from telebot import TeleBot
-from src.commands import (
-    CMD_DOG, CMD_SPACE, CMD_MEME, CMD_FUNNY, CMD_CAT
+
+# Local application imports
+from src.commands.constants import (
+    CMD_CAT,
+    CMD_DOG,
+    CMD_FUNNY,
+    CMD_MEME,
+    CMD_SPACE
 )
 from src.utils.user_actions import log_action, ActionType
 

@@ -3,6 +3,7 @@ import sys
 import pytest
 from dotenv import load_dotenv
 from src.database.mongo_db import MongoDB
+from src.utils.test_helpers import setup_test_environment
 
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

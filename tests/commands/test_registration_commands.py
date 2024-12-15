@@ -1,8 +1,11 @@
 import pytest
 from unittest.mock import Mock, patch
+from bson import ObjectId
+from src.commands import CMD_REGISTER
 from src.commands.registration_commands import register_registration_handlers
-from src.commands import CMD_REGISTER, BotStates
-from src.middleware.auth import is_admin
+from src.database.roles import Role
+from src.utils.notifications import NotificationType
+from src.utils.user_actions import ActionType
 
 def test_register_command_new_user(test_db):
     """Test /register command for a new user"""
@@ -370,7 +373,7 @@ def test_pending_command_with_requests(test_db):
         assert len(markup.keyboard) == 1
         row = markup.keyboard[0]
         assert len(row) == 2
-        assert row[0].text == "✅ Approve"
+        assert row[0].text == "�� Approve"
         assert row[1].text == "❌ Reject"
         assert row[0].callback_data == "approve_1"
         assert row[1].callback_data == "reject_1"

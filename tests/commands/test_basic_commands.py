@@ -1,7 +1,12 @@
+# Standard library imports
 import pytest
 from unittest.mock import Mock, patch
+
+# Local application imports
 from src.commands.basic_commands import register_basic_handlers
 from src.commands.constants import CMD_START, CMD_HELP
+from src.database.roles import Role
+from src.utils.user_actions import ActionType
 
 def test_start_command(test_db):
     """Test /start command"""

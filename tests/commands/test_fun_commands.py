@@ -1,7 +1,10 @@
+# Standard library imports
 import pytest
 from unittest.mock import Mock, patch
-from src.commands.fun_commands import register_fun_handlers
+
+# Local application imports
 from src.commands import CMD_CAT, CMD_DOG, CMD_SPACE, CMD_MEME, CMD_FUNNY
+from src.commands.fun_commands import register_fun_handlers
 
 def test_cat_command():
     """Test /cat command"""
@@ -43,7 +46,7 @@ def test_cat_command():
         bot.send_animation.assert_called_once_with(
             message.chat.id, 
             "http://example.com/cat.gif",
-            caption="Here's your random cat GIF! 😺"
+            caption="Here's your random cat GIF! ���"
         )
 
 def test_cat_command_api_error():
