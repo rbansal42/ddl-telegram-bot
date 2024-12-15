@@ -8,12 +8,14 @@ from telebot import TeleBot
 from src.commands.constants import (
     CMD_START, 
     CMD_HELP, 
-    BOT_COMMANDS, 
-    CMD_REGISTER, 
-    CMD_MYID
+    PUBLIC_COMMANDS,
+    CMD_MYID   
 )
+
 from src.database.mongo_db import MongoDB
 from src.utils.user_actions import log_action, ActionType
+from src.utils.command_helpers import get_commands_for_role
+from telebot.types import BotCommandScopeChat
 
 def register_basic_handlers(bot: TeleBot, db: MongoDB):
     def is_admin(user_id):
@@ -45,25 +47,25 @@ def register_basic_handlers(bot: TeleBot, db: MongoDB):
     @bot.message_handler(commands=[CMD_HELP])
     def help_command(message):
         try:
-            # Get user's registration status
-            is_registered = db.is_user_registered(message.from_user.id)
+            user_id = message.from_user.id
+            is_registered = db.is_user_registered(user_id)
+            user = db.users.find_one({'user_id': user_id})
 
-            # Get all commands from BOT_COMMANDS
-            commands = BOT_COMMANDS
-
-            if is_registered:
-                # Show all commands
+            if is_registered and user and user.get('registration_status') == 'approved':
+                role = user.get('role', 'unregistered')
+                commands = get_commands_for_role(role)
+                
+                # Update bot commands for this user
+                bot.set_my_commands(commands, scope=BotCommandScopeChat(message.chat.id))
+                
                 help_text = "📚 *Available Commands:*\n"
                 for command in commands:
                     help_text += f"/{command.command} - {command.description}\n"
             else:
-                # Filter out commands that require registration
-                public_commands = ['/start', '/help', '/register', '/myid', '/cat', '/dog', '/space', '/meme', '/funny']
+                # Show only public commands
                 help_text = "📚 *Available Commands:*\n"
-                for command in commands:
-                    if f"/{command.command}" in public_commands:
-                        help_text += f"/{command.command} - {command.description}\n"
-                
+                for command in PUBLIC_COMMANDS:
+                    help_text += f"/{command.command} - {command.description}\n"
                 help_text += "\n*Note:* Additional commands will be available after your registration is approved."
 
             log_action(
