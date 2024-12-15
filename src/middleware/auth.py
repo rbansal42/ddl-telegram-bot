@@ -96,19 +96,48 @@ def check_owner(bot: TeleBot, db: MongoDB):
 def check_admin_or_owner(bot, db):
     def decorator(func):
         @wraps(func)
-        def wrapper(message, *args, **kwargs):
-            user_id = message.from_user.id
-            user = db.users.find_one({'user_id': user_id})
+        def wrapper(*args, **kwargs):
+            print(f"========================== [DEBUG] Check admin or owner middleware triggered ==========================")
             
-            if not user or (
-                user.get('role') != Role.ADMIN.name.lower() and 
-                user.get('role') != Role.OWNER.name.lower()
-            ):
-                bot.reply_to(message, 
-                    "⛔️ This command is only available to admins and owner.")
+            # Get the first argument (either Message or CallbackQuery)
+            first_arg = args[0]
+            
+            # Determine if it's a message or callback query
+            if isinstance(first_arg, Message):
+                user_id = first_arg.from_user.id
+                print(f"[DEBUG] Processing Message object")
+            elif isinstance(first_arg, CallbackQuery):
+                user_id = first_arg.from_user.id
+                print(f"[DEBUG] Processing CallbackQuery object")
+            else:
+                print(f"[DEBUG] Unknown object type: {type(first_arg)}")
+                return
+            
+            print(f"User ID: {user_id}")
+            user = db.users.find_one({'user_id': user_id})
+            print(f"User data: {user}")
+            
+            if not user:
+                print(f"User {user_id} not found in database")
+                if isinstance(first_arg, CallbackQuery):
+                    bot.answer_callback_query(first_arg.id, "⛔️ This command is only available to admins and owner.")
+                else:
+                    bot.reply_to(first_arg, "⛔️ This command is only available to admins and owner.")
                 return
                 
-            return func(message, *args, **kwargs)
+            user_role = user.get('role', '')
+            print(f"User role: {user_role}")
+            
+            if (user_role != 'admin' and user_role != 'owner'):
+                print(f"User {user_id} with role {user_role} denied access - not admin/owner")
+                if isinstance(first_arg, CallbackQuery):
+                    bot.answer_callback_query(first_arg.id, "⛔️ This command is only available to admins and owner.")
+                else:
+                    bot.reply_to(first_arg, "⛔️ This command is only available to admins and owner.")
+                return
+            
+            print(f"[DEBUG] User {user_id} with role {user_role} granted access")
+            return func(*args, **kwargs)
         return wrapper
     return decorator
 
