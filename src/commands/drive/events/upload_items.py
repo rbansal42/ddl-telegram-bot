@@ -141,9 +141,12 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             
             try:
                 # Update status message
+                file_count, total_size = state_manager.get_upload_stats(user_id)
+                size_str = format_file_size(total_size)
                 bot.edit_message_text(
-                    "⏳ Processing uploads...\n"
-                    "Please wait while files are being uploaded to Drive.",
+                    f"⏳ Processing uploads...\n"
+                    f"Uploading {file_count} files ({size_str}) to Drive.\n"
+                    f"Please wait while files are being processed.",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode="Markdown"
