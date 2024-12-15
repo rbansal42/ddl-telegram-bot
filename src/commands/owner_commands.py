@@ -3,13 +3,14 @@ import os
 
 # Third-party imports
 from telebot import TeleBot
-from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommandScopeChat
 
 # Local application imports
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner, check_event_permission
 from src.services.google.drive_service import GoogleDriveService
+from src.utils.command_helpers import get_commands_for_role
 from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
@@ -19,6 +20,76 @@ from src.commands.owner.admin_management import register_admin_handlers
 def register_owner_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
     """Register all owner-specific command handlers"""
 
+    @bot.message_handler(commands=['refreshcommands'])
+    @check_admin_or_owner(bot, db)
+    def refresh_commands(message: Message) -> None:
+        """Update command menus for all registered users"""
+        print("========================== [DEBUG] Refresh Commands Started ==========================")
+        print(f"[DEBUG] Message from user ID: {message.from_user.id}")
+        try:
+            print("[DEBUG] Fetching registered users from database...")
+            # Get all registered users
+            registered_users = db.users.find({'registration_status': 'approved'})
+            registered_users_list = list(registered_users)
+            print(f"[DEBUG] Found {len(registered_users_list)} registered users")
+            
+            success_count = 0
+            error_count = 0
+            
+            for user in registered_users_list:
+                print(f"\n[DEBUG] Processing user: {user}")
+                try:
+                    user_id = user.get('user_id')
+                    role = user.get('role', 'unregistered')
+                    print(f"[DEBUG] User ID: {user_id}, Role: {role}")
+                    
+                    # Get appropriate commands for user's role
+                    print(f"[DEBUG] Getting commands for role: {role}")
+                    commands = get_commands_for_role(role)
+                    print(f"[DEBUG] Retrieved {len(commands)} commands")
+                    
+                    # Update commands for this user
+                    print(f"[DEBUG] Updating commands for user {user_id}")
+                    bot.set_my_commands(
+                        commands,
+                        scope=BotCommandScopeChat(user_id)
+                    )
+                    success_count += 1
+                    print(f"[DEBUG] Successfully updated commands for user {user_id}")
+                    
+                except Exception as e:
+                    print(f"[DEBUG] Failed to update commands for user {user.get('user_id')}")
+                    print(f"[DEBUG] Error details: {str(e)}")
+                    error_count += 1
+                    continue
+            
+            # Send summary message
+            print("\n[DEBUG] Preparing summary message")
+            summary = (
+                f"✅ Command refresh complete\n\n"
+                f"Successfully updated: {success_count} users\n"
+                f"Failed updates: {error_count} users"
+            )
+            print(f"[DEBUG] Summary message: {summary}")
+            
+            print("[DEBUG] Sending reply to user")
+            bot.reply_to(message, summary)
+            
+            # Log the action
+            print("[DEBUG] Logging refresh action")
+            log_action(
+                ActionType.COMMAND_REFRESH,
+                message.from_user.id
+            )
+            print("[DEBUG] Action logged successfully")
+            
+        except Exception as e:
+            print(f"[DEBUG] Critical error in refresh_commands: {str(e)}")
+            print(f"[DEBUG] Error type: {type(e)}")
+            print("[DEBUG] Sending error message to user")
+            bot.reply_to(message, "❌ Error refreshing commands.")
+        
+        print("========================== [DEBUG] Refresh Commands Completed ==========================")
     @bot.message_handler(commands=['ownerhelp'])
     @check_admin_or_owner(bot, db)
     def owner_help(message):

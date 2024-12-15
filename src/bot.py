@@ -12,10 +12,9 @@ from telebot.types import BotCommand, BotCommandScopeChat
 from telebot import TeleBot, apihelper
 
 # Local application imports
-from src.commands import BOT_COMMANDS
 from src.commands.admin_commands import register_member_management_handlers
 from src.commands.basic_commands import register_basic_handlers
-from src.commands.constants import PUBLIC_COMMANDS
+from src.commands.constants import BOT_COMMANDS
 from src.commands.owner.drive_management import register_drive_handlers
 from src.commands.fun_commands import register_fun_handlers
 from src.commands.member_commands import register_member_handlers
@@ -40,7 +39,7 @@ services = ServiceContainer()
 
 # Initialize bot with custom timeout settings
 bot = TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), threaded=True, state_storage=state_storage)
-bot.set_my_commands(BOT_COMMANDS)  # Register commands with Telegram
+bot.set_my_commands(BOT_COMMANDS)  # Only show public commands by default
 
 # Register all command handlers with services
 register_basic_handlers(bot, services.db)
@@ -72,30 +71,41 @@ help_text += "\n*Note:* Other commands will be available after your registration
 @bot.message_handler(commands=['help'])
 def update_help(message):
     """Update command menu based on user role"""
+    print(f"========================== [DEBUG] Help command triggered ==========================")
     try:
         user_id = message.from_user.id
+        print(f"[DEBUG] Processing help command for user ID: {user_id}")
+        
         user = services.db.users.find_one({'user_id': user_id})
+        print(f"[DEBUG] User data: {user}")
         
         if user and user.get('registration_status') == 'approved':
             role = user.get('role', 'unregistered')
+            print(f"[DEBUG] User role: {role}")
+            
             commands = get_commands_for_role(role)
+            print(f"[DEBUG] Retrieved {len(commands)} commands for role {role}")
             
             # Update bot commands for this user
             bot.set_my_commands(commands, scope=BotCommandScopeChat(message.chat.id))
+            print(f"[DEBUG] Updated bot commands for chat ID: {message.chat.id}")
             
             help_text = "📚 *Available Commands:*\n"
             for command in commands:
                 help_text += f"/{command.command} - {command.description}\n"
         else:
-            # Show public commands for unregistered users
+            print("[DEBUG] User not approved - showing public commands only")
             help_text = "📚 *Available Commands:*\n"
             for command in PUBLIC_COMMANDS:
                 help_text += f"/{command.command} - {command.description}\n"
             help_text += "\n*Note:* Additional commands will be available after your registration is approved."
         
+        print("[DEBUG] Sending help text to user")
         bot.reply_to(message, help_text, parse_mode="Markdown")
+        print("[DEBUG] Help text sent successfully")
         
     except Exception as e:
+        print(f"[DEBUG] Error in update_help: {str(e)}")
         print(f"Error updating commands: {e}")
         bot.reply_to(message, "❌ Error updating commands menu.")
 

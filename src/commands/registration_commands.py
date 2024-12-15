@@ -179,6 +179,14 @@ def register_registration_handlers(bot: TeleBot, db: MongoDB):
                         user_id,
                         issuer_id=admin_id
                     )
+                    try:
+                        user_commands = get_commands_for_role(Role.MEMBER.name.lower())
+                        bot.set_my_commands(
+                            user_commands,
+                            scope=types.BotCommandScopeChat(user_id)
+                        )
+                    except Exception as e:
+                        print(f"Failed to update commands for new member: {e}")
                 else:
                     notify_user(
                         bot,
@@ -190,16 +198,6 @@ def register_registration_handlers(bot: TeleBot, db: MongoDB):
                 print(f"❌ Failed to {action} registration")
                 bot.answer_callback_query(call.id, f"Error processing registration {action}.")
                 
-                # Update commands for the newly approved user
-            try:
-                user_commands = get_commands_for_role(Role.MEMBER.name.lower())
-                bot.set_my_commands(
-                    user_commands,
-                    scope=types.BotCommandScopeChat(user_id)
-                )
-            except Exception as e:
-                print(f"Failed to update commands for new member: {e}")
-            
         except Exception as e:
             print(f"❌ Error in handle_registration_decision: {e}")
             bot.answer_callback_query(call.id, "Error processing registration.")

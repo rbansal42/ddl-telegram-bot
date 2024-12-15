@@ -41,6 +41,7 @@ class ActionType(Enum):
     SYSTEM_ERROR = "system_error"
     CONFIG_UPDATED = "config_updated"
     BACKUP_CREATED = "backup_created"
+    COMMAND_REFRESH = "command_refresh"
     
     # Administrative Actions
     ADMIN_COMMAND = "admin_command"

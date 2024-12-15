@@ -3,7 +3,7 @@ from typing import Optional
 
 # Third-party imports
 from telebot import TeleBot
-from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommandScopeChat
 
 # Local application imports
 from src.database.mongo_db import MongoDB
@@ -11,6 +11,7 @@ from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
+from src.utils.command_helpers import get_commands_for_role
 
 def register_admin_handlers(bot: TeleBot, db: MongoDB):
     """Register all admin management related command handlers"""
@@ -44,6 +45,15 @@ def register_admin_handlers(bot: TeleBot, db: MongoDB):
             )
         except Exception as e:
             print(f"Failed to notify new admin: {e}")
+        
+        try:
+            admin_commands = get_commands_for_role(Role.ADMIN.name.lower())
+            bot.set_my_commands(
+                admin_commands,
+                scope=BotCommandScopeChat(member_id)
+            )
+        except Exception as e:
+            print(f"Failed to update commands for new admin: {e}")
 
     def demote_to_member(bot: TeleBot, db: MongoDB, chat_id: int, admin_id: int) -> None:
         """Helper function to demote an admin to member"""
@@ -71,6 +81,15 @@ def register_admin_handlers(bot: TeleBot, db: MongoDB):
             )
         except Exception as e:
             print(f"Failed to notify demoted admin: {e}")
+        
+        try:
+            member_commands = get_commands_for_role(Role.MEMBER.name.lower())
+            bot.set_my_commands(
+                member_commands,
+                scope=BotCommandScopeChat(admin_id)
+            )
+        except Exception as e:
+            print(f"Failed to update commands for demoted admin: {e}")
 
     @bot.message_handler(commands=['addadmin'])
     @check_admin_or_owner(bot, db)
