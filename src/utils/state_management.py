@@ -42,3 +42,19 @@ class UserStateManager:
             len(state.get('pending_uploads', [])),
             state.get('total_size', 0)
         )
+    
+    def get_upload_progress(self, user_id: int) -> tuple:
+        """Get upload progress stats
+        Returns: (completed_count, total_count, completed_size, total_size)
+        """
+        state = self._states.get(user_id, {})
+        pending_uploads = state.get('pending_uploads', [])
+        completed_uploads = state.get('completed_uploads', [])
+        
+        total_count = len(pending_uploads)
+        completed_count = len(completed_uploads)
+        
+        total_size = sum(file.get('size_bytes', 0) for file in pending_uploads)
+        completed_size = sum(file.get('size_bytes', 0) for file in completed_uploads)
+        
+        return (completed_count, total_count, completed_size, total_size)

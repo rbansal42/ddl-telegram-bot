@@ -39,6 +39,28 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         except Exception as e:
             print(f"[DEBUG] Error updating status message: {str(e)}")
 
+    def update_progress_message(bot, chat_id, message_id, user_id, state_manager):
+        completed_count, total_count, completed_size, total_size = state_manager.get_upload_progress(user_id)
+        progress_percent = (completed_size / total_size * 100) if total_size > 0 else 0
+        completed_size_str = format_file_size(completed_size)
+        total_size_str = format_file_size(total_size)
+        
+        progress_bar = "▓" * int(progress_percent/10) + "░" * (10-int(progress_percent/10))
+        
+        message = (
+            f"⏳ *Uploading Files*\n\n"
+            f"Progress: [{progress_bar}] {progress_percent:.1f}%\n"
+            f"Files: {completed_count}/{total_count}\n"
+            f"Size: {completed_size_str}/{total_size_str}"
+        )
+        
+        bot.edit_message_text(
+            message,
+            chat_id,
+            message_id,
+            parse_mode="Markdown"
+        )
+
     @bot.message_handler(content_types=['document', 'photo', 'video', 'audio'])
     def handle_file_upload(message):
         user_id = message.from_user.id
@@ -156,7 +178,16 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 folder_name = user_state['folder_name']
                 print(f"[DEBUG] Folder ID: {folder_id}, Folder Name: {folder_name}")
 
-                # Upload each file using Drive API
+                # Initialize progress tracking
+                state_manager.set_state(user_id, {
+                    **user_state,
+                    'completed_uploads': []
+                })
+                
+                # Initial progress message
+                update_progress_message(bot, call.message.chat.id, call.message.message_id, user_id, state_manager)
+                
+                # Upload files
                 uploaded_files = []
                 for file in pending_uploads:
                     with open(file['path'], 'rb') as f:
@@ -170,6 +201,16 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                             **file,
                             'web_link': uploaded_file['webViewLink']
                         })
+                        
+                        # Update progress after each file
+                        state_manager.get_state(user_id)['completed_uploads'].append(file)
+                        update_progress_message(
+                            bot, 
+                            call.message.chat.id, 
+                            call.message.message_id,
+                            user_id,
+                            state_manager
+                        )
                 
                 # Format summary
                 total_size = format_file_size(state_manager.get_upload_stats(user_id)[1])
