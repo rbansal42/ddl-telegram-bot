@@ -364,7 +364,7 @@ class GoogleDriveService:
 
     def upload_file(self, file_content: bytes, file_name: str, parent_folder_id: str) -> dict:
         """
-        Upload a file to Google Drive using rclone
+        Upload a file to Google Drive using Google Drive API directly
         
         Args:
             file_content: The file content in bytes
@@ -377,28 +377,39 @@ class GoogleDriveService:
         try:
             print(f"[DEBUG] Starting file upload: {file_name} to folder: {parent_folder_id}")
             
-            # Create temporary file
-            temp_path = Path(f"/tmp/{file_name}")
-            temp_path.write_bytes(file_content)
+            # Create file metadata
+            file_metadata = {
+                'name': file_name,
+                'parents': [parent_folder_id]
+            }
             
-            # Upload using injected rclone service
-            destination_path = f"{parent_folder_id}/{file_name}"
-            result = self.rclone_service.upload_file(str(temp_path), destination_path)
+            # Create media content
+            fh = io.BytesIO(file_content)
+            media = MediaIoBaseUpload(
+                fh,
+                mimetype='application/octet-stream',
+                chunksize=1024*1024,
+                resumable=True
+            )
             
-            # Cleanup temporary file
-            temp_path.unlink()
+            # Upload file
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                supportsAllDrives=True,
+                fields='id, name, mimeType, size, webViewLink'
+            ).execute()
             
-            # Return file metadata in the expected format
+            print(f"[DEBUG] File uploaded successfully: {file.get('id')}")
+            
             return {
-                'id': result.get('id', ''),
-                'name': result.get('name', file_name),
-                'mimeType': result.get('mimeType', ''),
-                'size': result.get('size', 0),
-                'webViewLink': result.get('webViewLink', '')
+                'id': file.get('id', ''),
+                'name': file.get('name', file_name),
+                'mimeType': file.get('mimeType', ''),
+                'size': file.get('size', 0),
+                'webViewLink': file.get('webViewLink', '')
             }
             
         except Exception as e:
             print(f"[DEBUG] Error in upload_file: {str(e)}")
-            if 'temp_path' in locals() and temp_path.exists():
-                temp_path.unlink()
             raise Exception(f"Failed to upload file: {str(e)}")
