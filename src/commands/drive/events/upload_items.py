@@ -151,23 +151,31 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 
                 # Upload all files using rclone
                 folder_name = user_state['folder_name']
-                result = rclone_service.upload_to_folder(
+                rclone_service.upload_to_folder(
                     temp_handler.get_user_temp_dir(user_id),
                     folder_name
                 )
                 
-                # Format summary using drive formatter
-                file_list = [{'name': f['name'], 'webViewLink': '', 'size': f['size_bytes']} 
-                           for f in pending_uploads]
-                summary = format_drive_items(file_list)
+                # Format summary using pending uploads info
+                total_size = format_file_size(state_manager.get_upload_stats(user_id)[1])
+                summary = "*Uploaded Files:*\n"
+                for file in pending_uploads:
+                    file_type = file['type']
+                    emoji = {
+                        'document': '📄',
+                        'photo': '🖼',
+                        'video': '🎥',
+                        'audio': '🎵'
+                    }.get(file_type, '📁')
+                    summary += f"{emoji} {file['name']} - {file['size']}\n"
+                summary += f"\n*Total Size:* {total_size}"
                 
                 # Send final message
                 bot.edit_message_text(
                     f"✅ *Upload Complete!*\n\n{summary}",
                     call.message.chat.id,
                     call.message.message_id,
-                    parse_mode="Markdown",
-                    disable_web_page_preview=True
+                    parse_mode="Markdown"
                 )
                 
                 # Log action
