@@ -1075,19 +1075,26 @@ def register_owner_handlers(bot: TeleBot):
             )
 
     def process_event_name(message):
-        """Process the event name and ask for date"""
+        """Process the event name and ask for date options"""
         try:
             # Store event name in user data
             user_data = {}
             user_data['event_name'] = message.text.strip()
             
-            # Ask for event date
-            msg = bot.reply_to(
-                message,
-                "📅 Please enter the event date in format DD/MM/YYYY:"
+            # Create markup for date options
+            markup = InlineKeyboardMarkup()
+            markup.row(
+                InlineKeyboardButton("📅 Custom Date", callback_data="date_custom"),
+                InlineKeyboardButton("📆 Today", callback_data="date_today")
             )
-            # Pass the user_data to the next handler
-            bot.register_next_step_handler(msg, process_event_date, user_data)
+            
+            # Ask for date preference
+            bot.reply_to(
+                message,
+                "Choose date option:",
+                reply_markup=markup
+            )
+            
         except Exception as e:
             bot.reply_to(message, f"❌ Error: {str(e)}")
 
@@ -1149,3 +1156,62 @@ def register_owner_handlers(bot: TeleBot):
                 error_message=str(e),
                 metadata={'command': 'addevent'}
             )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('date_'))
+    def handle_date_option(call):
+        """Handle date option selection"""
+        try:
+            option = call.data.split('_')[1]
+            user_data = {}
+            user_data['event_name'] = call.message.reply_to_message.text.strip()
+            
+            if option == 'today':
+                # Use current date
+                from datetime import datetime
+                date = datetime.now()
+                formatted_date = date.strftime('%Y-%m-%d')
+                
+                # Create folder directly
+                folder_name = f"{formatted_date}; {user_data['event_name']}"
+                folder = drive_service.create_folder(folder_name)
+                sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+                
+                # Escape the texts using the helper function
+                escaped_name = escape_markdown(user_data['event_name'])
+                escaped_url = escape_markdown(sharing_url)
+                
+                # Format response
+                response = (
+                    f"✅ Event folder created successfully\\!\n\n"
+                    f"*Event:* {escaped_name}\n"
+                    f"*Link:* {escaped_url}"
+                )
+                
+                bot.edit_message_text(
+                    response,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="MarkdownV2",
+                    disable_web_page_preview=True
+                )
+                
+                # Log action
+                log_action(
+                    ActionType.FOLDER_CREATED,
+                    call.from_user.id,
+                    metadata={
+                        'folder_name': folder_name,
+                        'folder_id': folder['id']
+                    }
+                )
+                
+            else:  # custom date
+                msg = bot.edit_message_text(
+                    "📅 Please enter the event date in format DD/MM/YYYY:",
+                    call.message.chat.id,
+                    call.message.message_id
+                )
+                bot.register_next_step_handler(msg, process_event_date, user_data)
+                
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
