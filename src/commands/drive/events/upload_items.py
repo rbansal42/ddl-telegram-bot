@@ -3,7 +3,6 @@ from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from src.database.mongo_db import MongoDB
 from src.services.google.drive_service import GoogleDriveService
-from src.services.rclone.rclone_service import RcloneService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.state_management import UserStateManager
 from src.utils.file_helpers import get_file_info, format_file_size
@@ -12,7 +11,7 @@ from telebot.handler_backends import State, StatesGroup
 from typing import Dict, List
 import time
 
-def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, rclone_service: RcloneService, state_manager: UserStateManager):
+def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
     temp_handler = TempFileHandler()
     
     def create_status_markup(user_id: int):
@@ -152,17 +151,30 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     parse_mode="Markdown"
                 )
                 
-                # Upload all files using rclone
+                # Get folder ID from state
+                folder_id = user_state['folder_id']
                 folder_name = user_state['folder_name']
-                rclone_service.upload_to_folder(
-                    temp_handler.get_user_temp_dir(user_id),
-                    folder_name
-                )
-                
-                # Format summary using pending uploads info
-                total_size = format_file_size(state_manager.get_upload_stats(user_id)[1])
-                summary = "*Uploaded Files:*\n"
+                print(f"[DEBUG] Folder ID: {folder_id}, Folder Name: {folder_name}")
+
+                # Upload each file using Drive API
+                uploaded_files = []
                 for file in pending_uploads:
+                    with open(file['path'], 'rb') as f:
+                        file_content = f.read()
+                        uploaded_file = drive_service.upload_file(
+                            file_content,
+                            file['name'],
+                            folder_id
+                        )
+                        uploaded_files.append({
+                            **file,
+                            'web_link': uploaded_file['webViewLink']
+                        })
+                
+                # Format summary
+                total_size = format_file_size(state_manager.get_upload_stats(user_id)[1])
+                summary = "*Successfully Uploaded Files:*\n"
+                for file in uploaded_files:
                     file_type = file['type']
                     emoji = {
                         'document': '📄',
@@ -170,7 +182,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                         'video': '🎥',
                         'audio': '🎵'
                     }.get(file_type, '📁')
-                    summary += f"{emoji} {file['name']} - {file['size']}\n"
+                    summary += f"{emoji} [{file['name']}]({file['web_link']}) - {file['size']}\n"
                 summary += f"\n*Total Size:* {total_size}"
                 
                 # Send final message
@@ -178,7 +190,8 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     f"✅ *Upload Complete!*\n\n{summary}",
                     call.message.chat.id,
                     call.message.message_id,
-                    parse_mode="Markdown"
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True
                 )
                 
                 # Log action
@@ -187,7 +200,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     user_id,
                     metadata={
                         'folder_name': folder_name,
-                        'file_count': len(pending_uploads),
+                        'file_count': len(uploaded_files),
                         'total_size': state_manager.get_upload_stats(user_id)[1]
                     }
                 )

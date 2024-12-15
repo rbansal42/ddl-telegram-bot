@@ -49,7 +49,7 @@ register_member_handlers(bot, services.db)
 
 # Register drive handlers with state manager
 event_handlers = register_event_handlers(bot, services.db, services.drive_service, state_manager)
-upload_handlers = register_upload_handlers(bot, services.db, services.drive_service, services.rclone_service, state_manager)
+upload_handlers = register_upload_handlers(bot, services.db, services.drive_service, state_manager)
 register_drive_handlers(bot, services.db, services.drive_service)
 register_admin_handlers(bot, services.db)
 
