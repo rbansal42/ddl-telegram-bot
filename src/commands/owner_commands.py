@@ -6,7 +6,7 @@ from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 # Local application imports
-from src.commands.owner.drive_management import register_drive_handlers
+from src.commands.drive import register_drive_handlers
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner, check_event_permission
