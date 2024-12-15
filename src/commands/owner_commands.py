@@ -369,7 +369,7 @@ def register_owner_handlers(bot: TeleBot):
         """Handle member removal confirmation"""
         try:
             if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
-                bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
+                bot.answer_callback_query(call.id, "⛔�� This action is only available to owners.")
                 return
                 
             _, member_id = call.data.split('_')
@@ -1133,8 +1133,7 @@ def register_owner_handlers(bot: TeleBot):
                 message.from_user.id,
                 metadata={
                     'folder_name': folder_name,
-                    'folder_id': folder['id'],
-                    'sharing_expiry': (datetime.utcnow() + timedelta(days=5)).isoformat()
+                    'folder_id': folder['id']
                 }
             )
             

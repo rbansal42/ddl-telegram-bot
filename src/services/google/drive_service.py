@@ -308,27 +308,20 @@ class GoogleDriveService:
             print(f"Error listing Team Drive contents: {error}")
             raise Exception(f"Failed to list Team Drive contents: {str(error)}") 
 
-    def set_folder_sharing_permissions(self, folder_id: str, expiry_days: int = 5) -> str:
+    def set_folder_sharing_permissions(self, folder_id: str) -> str:
         """
         Set folder permissions to allow anyone with the link to add content
         Args:
             folder_id: ID of the folder
-            expiry_days: Number of days until the sharing link expires
         Returns:
             str: The sharing URL
         """
         try:
-            from datetime import datetime, timedelta
-            
-            # Calculate expiration time
-            expiration_time = (datetime.utcnow() + timedelta(days=expiry_days)).isoformat() + 'Z'
-            
             # Create sharing permission
             permission = {
                 'type': 'anyone',
                 'role': 'writer',
-                'allowFileDiscovery': False,
-                'expirationTime': expiration_time
+                'allowFileDiscovery': False
             }
             
             # Apply the permission
