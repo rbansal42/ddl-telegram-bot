@@ -11,8 +11,9 @@ from typing import Dict, List
 import time
 
 def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
-    # Store media groups temporarily
-    media_groups: Dict[str, List] = {}
+    # Store media groups temporarily with a timeout
+    media_groups: Dict[str, Dict] = {}
+    MEDIA_GROUP_TIMEOUT = 2.0  # seconds to wait for all media group messages
     
     def send_upload_status(message: Message, file_type: str, file_name: str, file_size: str):
         """Send upload status message"""
@@ -35,6 +36,9 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         """Handle a group of media files"""
         print(f"[DEBUG] Processing media group with {len(messages)} items")
         
+        # Sort messages by message_id to maintain order
+        messages.sort(key=lambda x: x.message_id)
+        
         # Send initial status
         status_msg = bot.reply_to(
             messages[0],
@@ -48,6 +52,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         for msg in messages:
             try:
                 file_type, file_name, file_size = get_file_info(msg)
+                print(f"[DEBUG] Processing group file: {file_name}")
                 
                 # Get file info based on type
                 if msg.photo:
@@ -111,7 +116,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             disable_web_page_preview=True
         )
 
-    @bot.message_handler(content_types=['document', 'photo', 'video', 'audio'])
+    @bot.message_handler(content_types=['photo', 'video', 'document', 'audio'])
     def handle_file_upload(message: Message):
         user_id = message.from_user.id
         print(f"\n[DEBUG] File upload attempt from user {user_id}")
@@ -142,17 +147,20 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             if message.media_group_id not in media_groups:
                 media_groups[message.media_group_id] = {
                     'messages': [],
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'last_update': time.time()
                 }
+            
             media_groups[message.media_group_id]['messages'].append(message)
+            media_groups[message.media_group_id]['last_update'] = time.time()
             
-            # Wait briefly to collect all media group messages
-            time.sleep(0.5)  # Small delay to ensure all media group messages are received
+            # Process media group after timeout
+            current_time = time.time()
+            group_data = media_groups[message.media_group_id]
             
-            # Process media group if it's complete
-            if len(media_groups[message.media_group_id]['messages']) == message.media_group_id_size:
-                messages = media_groups[message.media_group_id]['messages']
-                handle_media_group(messages, folder_id, user_id)
+            if current_time - group_data['last_update'] >= MEDIA_GROUP_TIMEOUT:
+                print(f"[DEBUG] Processing media group after timeout: {len(group_data['messages'])} messages")
+                handle_media_group(group_data['messages'], folder_id, user_id)
                 del media_groups[message.media_group_id]
             
             return
@@ -221,9 +229,20 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         current_time = time.time()
         to_remove = []
         for group_id, group_data in media_groups.items():
-            if current_time - group_data['timestamp'] > 60:  # Remove after 1 minute
+            # Remove groups older than 1 minute or not updated in MEDIA_GROUP_TIMEOUT seconds
+            if (current_time - group_data['timestamp'] > 60 or 
+                current_time - group_data['last_update'] >= MEDIA_GROUP_TIMEOUT):
+                print(f"[DEBUG] Cleaning up media group: {group_id}")
                 to_remove.append(group_id)
+        
         for group_id in to_remove:
+            group_data = media_groups[group_id]
+            if group_data['messages']:
+                # Process any remaining messages in the group
+                user_id = group_data['messages'][0].from_user.id
+                user_state = state_manager.get_state(user_id)
+                if user_state.get('upload_mode'):
+                    handle_media_group(group_data['messages'], user_state['folder_id'], user_id)
             del media_groups[group_id]
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('upload_'))
