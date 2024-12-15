@@ -68,34 +68,42 @@ class RcloneService:
         except FileNotFoundError:
             raise Exception("Rclone is not installed or not in PATH")
         
-    def upload_to_folder(self, source_dir: str, destination_folder: str) -> List[Dict]:
+    def upload_to_folder(self, source_dir: str, folder_name: str) -> None:
         """Upload all files from a directory to Google Drive using rclone"""
         try:
-            print(f"[DEBUG] Uploading files from {source_dir} to {destination_folder}")
+            print(f"[DEBUG] Uploading files from {source_dir} to folder ID: {folder_name}")
             
             env = {"RCLONE_CONFIG": str(self.config_path)}
             
-            # Upload entire directory
+            # Upload using folder ID
             result = self.run_rclone_command([
-                "rclone", "copy",
+                "rclone", "move",
                 source_dir,
-                f"{self.rclone_remote}:/{destination_folder}",
+                f"{self.rclone_remote}:{folder_name}",  # Use ID-based path
                 "--drive-server-side-across-configs",
                 "--drive-shared-with-me",
                 "--drive-team-drive",
                 f"--drive-team-drive-id={self.team_drive_id}",
-                "-P",  # Show progress
-                "--stats-one-line"
             ], env=env)
             
             if result.returncode != 0:
-                raise Exception(f"Upload failed: {result.stderr}")
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error occurred"
+                raise Exception(f"Upload failed: {error_msg}")
             
-            # Get info for all uploaded files
-            uploaded_files = self._list_folder_contents(destination_folder)
-            return uploaded_files
+            # Verify upload
+            verify_result = self.run_rclone_command([
+                "rclone", "lsf",
+                f"{self.rclone_remote}:{folder_name}",
+                "--drive-shared-with-me",
+                "--drive-team-drive",
+                f"--drive-team-drive-id={self.team_drive_id}"
+            ], env=env)
             
+            if verify_result.returncode != 0:
+                raise Exception("Failed to verify upload completion")
+
         except Exception as e:
+            print(f"[ERROR] Upload failed: {str(e)}")
             raise Exception(f"Failed to upload files: {str(e)}")
 
     def _list_folder_contents(self, folder_path: str) -> List[Dict]:
@@ -105,7 +113,7 @@ class RcloneService:
             result = self.run_rclone_command([
                 "rclone", "lsf",
                 f"{self.rclone_remote}:{folder_path}",
-                "--format", "id,size,mime,path",  # Include path in output
+                "--format", "ismp",  # Include path in output
                 "--drive-shared-with-me",
                 "--drive-team-drive",
                 f"--drive-team-drive-id={self.team_drive_id}",
@@ -138,7 +146,7 @@ class RcloneService:
             result = self.run_rclone_command([
                 "rclone", "lsf",
                 f"{self.rclone_remote}:{file_path}",
-                "--format", "id,size,mime",  # Specify exact format
+                "--format", "ism",  # Specify exact format
                 "--drive-shared-with-me",
                 "--drive-team-drive",
                 f"--drive-team-drive-id={self.team_drive_id}"
