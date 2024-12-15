@@ -10,6 +10,9 @@ class ActionType(Enum):
     USER_REJECTED = "user_rejected"
     USER_PROMOTED = "user_promoted"
     USER_DEMOTED = "user_demoted"
+    ADMIN_PROMOTION = "admin_promotion"
+    ADMIN_DEMOTION = "admin_demotion"
+    MEMBER_REMOVAL = "member_removal"
     
     # Access Control
     ACCESS_GRANTED = "access_granted"
