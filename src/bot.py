@@ -8,13 +8,14 @@ from dotenv import load_dotenv
 import telebot
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
-from telebot.types import BotCommand
+from telebot.types import BotCommand, BotCommandScopeChat
 from telebot import TeleBot, apihelper
 
 # Local application imports
 from src.commands import BOT_COMMANDS
 from src.commands.admin_commands import register_member_management_handlers
 from src.commands.basic_commands import register_basic_handlers
+from src.commands.constants import PUBLIC_COMMANDS
 from src.commands.owner.drive_management import register_drive_handlers
 from src.commands.fun_commands import register_fun_handlers
 from src.commands.member_commands import register_member_handlers
@@ -22,6 +23,7 @@ from src.commands.owner.admin_management import register_admin_handlers
 from src.commands.owner_commands import register_owner_handlers
 from src.commands.registration_commands import register_registration_handlers
 from src.services.service_container import ServiceContainer
+from src.utils.command_helpers import get_commands_for_role
 
 # Specify the path to the .env file if it's not in the current directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -69,7 +71,33 @@ help_text += "\n*Note:* Other commands will be available after your registration
 
 @bot.message_handler(commands=['help'])
 def update_help(message):
-    bot.reply_to(message, help_text, parse_mode="Markdown")
+    """Update command menu based on user role"""
+    try:
+        user_id = message.from_user.id
+        user = services.db.users.find_one({'user_id': user_id})
+        
+        if user and user.get('registration_status') == 'approved':
+            role = user.get('role', 'unregistered')
+            commands = get_commands_for_role(role)
+            
+            # Update bot commands for this user
+            bot.set_my_commands(commands, scope=BotCommandScopeChat(message.chat.id))
+            
+            help_text = "📚 *Available Commands:*\n"
+            for command in commands:
+                help_text += f"/{command.command} - {command.description}\n"
+        else:
+            # Show public commands for unregistered users
+            help_text = "📚 *Available Commands:*\n"
+            for command in PUBLIC_COMMANDS:
+                help_text += f"/{command.command} - {command.description}\n"
+            help_text += "\n*Note:* Additional commands will be available after your registration is approved."
+        
+        bot.reply_to(message, help_text, parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"Error updating commands: {e}")
+        bot.reply_to(message, "❌ Error updating commands menu.")
 
 if __name__ == '__main__':
     print('🤖 Bot started. Press Ctrl+C to stop.')

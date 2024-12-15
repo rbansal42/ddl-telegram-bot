@@ -12,6 +12,7 @@ from src.middleware.auth import check_admin_or_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
 from src.middleware.auth import is_admin
+from src.utils.command_helpers import get_commands_for_role
 
 def register_registration_handlers(bot: TeleBot, db: MongoDB):
     
@@ -188,6 +189,16 @@ def register_registration_handlers(bot: TeleBot, db: MongoDB):
             else:
                 print(f"❌ Failed to {action} registration")
                 bot.answer_callback_query(call.id, f"Error processing registration {action}.")
+                
+                # Update commands for the newly approved user
+            try:
+                user_commands = get_commands_for_role(Role.MEMBER.name.lower())
+                bot.set_my_commands(
+                    user_commands,
+                    scope=types.BotCommandScopeChat(user_id)
+                )
+            except Exception as e:
+                print(f"Failed to update commands for new member: {e}")
             
         except Exception as e:
             print(f"❌ Error in handle_registration_decision: {e}")
