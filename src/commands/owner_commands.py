@@ -7,7 +7,7 @@ from telebot import TeleBot, types
 # Local application imports
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
-from src.middleware.auth import check_admin_or_owner
+from src.middleware.auth import check_admin_or_owner, check_event_permission
 from src.services.google.drive_service import GoogleDriveService
 from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType
@@ -938,7 +938,7 @@ def register_owner_handlers(bot: TeleBot):
             current_items = items[start_idx:end_idx]
     
             # Build the response message
-            response = f"��� *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
+            response = f"📂 *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
             folders = [item for item in current_items if item['mimeType'] == 'application/vnd.google-apps.folder']
             files_only = [item for item in current_items if item['mimeType'] != 'application/vnd.google-apps.folder']
     
@@ -1054,3 +1054,89 @@ def register_owner_handlers(bot: TeleBot):
 
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+    
+    @bot.message_handler(commands=['addevent'])
+    @check_event_permission(bot, db)  # Changed from check_admin_or_owner
+    def add_event(message):
+        """Start the process of adding a new event folder"""
+        try:
+            # Ask for event name
+            msg = bot.reply_to(message, "📝 Please enter the name of the event:")
+            bot.register_next_step_handler(msg, process_event_name)
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'addevent'}
+            )
+
+    def process_event_name(message):
+        """Process the event name and ask for date"""
+        try:
+            # Store event name in user data
+            user_data = {}
+            user_data['event_name'] = message.text.strip()
+            
+            # Ask for event date
+            msg = bot.reply_to(
+                message,
+                "📅 Please enter the event date in format DD/MM/YYYY:"
+            )
+            # Pass the user_data to the next handler
+            bot.register_next_step_handler(msg, process_event_date, user_data)
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+
+    def process_event_date(message, user_data):
+        """Process the event date and create the folder"""
+        try:
+            from datetime import datetime
+            
+            # Parse and validate date
+            try:
+                date = datetime.strptime(message.text.strip(), '%d/%m/%Y')
+                formatted_date = date.strftime('%Y-%m-%d')
+            except ValueError:
+                bot.reply_to(message, "❌ Invalid date format. Please use DD/MM/YYYY")
+                return
+
+            # Create folder name
+            folder_name = f"{formatted_date}; {user_data['event_name']}"
+            
+            # Create folder in Drive
+            folder = drive_service.create_folder(folder_name)
+            
+            # Format response
+            response = (
+                f"✅ Event folder created successfully!\n\n"
+                f"{user_data['event_name']} - Pictures\n\n"
+                f"{folder['webViewLink']}"
+            )
+            
+            bot.reply_to(
+                message,
+                response,
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
+            
+            # Log action
+            log_action(
+                ActionType.FOLDER_CREATED,
+                message.from_user.id,
+                metadata={
+                    'folder_name': folder_name,
+                    'folder_id': folder['id']
+                }
+            )
+            
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error creating event folder: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'addevent'}
+            )

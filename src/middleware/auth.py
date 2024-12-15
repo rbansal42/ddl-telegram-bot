@@ -111,3 +111,22 @@ def check_admin_or_owner(bot, db):
             return func(message, *args, **kwargs)
         return wrapper
     return decorator
+
+def check_event_permission(bot, db):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(message, *args, **kwargs):
+            user_id = message.from_user.id
+            user = db.users.find_one({'user_id': user_id})
+            
+            if not user or not Permissions.has_permission(
+                Role[user.get('role', '').upper()], 
+                'can_manage_events'
+            ):
+                bot.reply_to(message, 
+                    "⛔️ You don't have permission to manage events.")
+                return
+                
+            return func(message, *args, **kwargs)
+        return wrapper
+    return decorator
