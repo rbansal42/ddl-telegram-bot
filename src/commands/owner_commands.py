@@ -472,63 +472,46 @@ def register_owner_handlers(bot: TeleBot):
     @bot.message_handler(commands=['listdrive'])
     @check_owner(bot, db)
     def list_drive_contents(message):
-        """List all files in the Team Drive folder"""
+        """List all files and folders in the Team Drive folder"""
         try:
-            args = message.text.split()
-            folder_id = args[1] if len(args) > 1 else None
-            recursive = False
-
-            files = drive_service.list_files(folder_id, recursive)
+            files = drive_service.list_files()
             
             if not files:
-                bot.reply_to(message, "📂 No files found in this folder.")
+                bot.reply_to(message, "📂 No files found in Team Drive.")
                 return
 
-            def format_file_list(files_list, level=0):
-                response = ""
-                indent = "  " * level
-                
-                for file in files_list:
-                    is_folder = file['mimeType'] == 'application/vnd.google-apps.folder'
-                    icon = "📂" if is_folder else "📄"
-                    size = format_file_size(int(file.get('size', 0))) if not is_folder else ""
-                    modified = format_timestamp(file['modifiedTime'])
-                    
-                    response += (
-                        f"{indent}{icon} *{file['name']}*\n"
-                        f"{indent}├ ID: `{file['id']}`\n"
-                        f"{indent}├ Modified: {modified}\n"
-                    )
-                    
-                    if size:
-                        response += f"{indent}├ Size: {size}\n"
-                    
-                    if file.get('webViewLink'):
-                        response += f"{indent}└ [Open in Drive]({file['webViewLink']})\n"
-                    
-                    response += "\n"
-                    
-                    # Recursively format children if present
-                    if file.get('children'):
-                        response += format_file_list(file['children'], level + 1)
-                
-                return response
-
-            # Create paginated response
-            full_response = format_file_list(files)
-            max_length = 4096  # Telegram message length limit
+            response = "📂 *Team Drive Contents:*\n\n"
             
-            # Split response into chunks if needed
-            if len(full_response) <= max_length:
-                bot.reply_to(message, full_response, parse_mode="Markdown", disable_web_page_preview=True)
+            # Process folders first
+            folders = [f for f in files if f['mimeType'] == 'application/vnd.google-apps.folder']
+            if folders:
+                response += "*Folders:*\n"
+                for folder in folders:
+                    response += f"📁 {folder['name']}\n"
+                    response += f"└ ID: `{folder['id']}`\n\n"
+            
+            # Then process files
+            regular_files = [f for f in files if f['mimeType'] != 'application/vnd.google-apps.folder']
+            if regular_files:
+                response += "*Files:*\n"
+                for file in regular_files:
+                    size = format_file_size(int(file.get('size', 0)))
+                    response += f"📄 {file['name']}\n"
+                    response += f"├ ID: `{file['id']}`\n"
+                    response += f"└ Size: {size}\n\n"
+
+            # Split response if needed
+            max_length = 4096
+            if len(response) <= max_length:
+                bot.reply_to(message, response, parse_mode="Markdown")
             else:
-                chunks = [full_response[i:i + max_length] for i in range(0, len(full_response), max_length)]
+                chunks = [response[i:i + max_length] for i in range(0, len(response), max_length)]
                 for i, chunk in enumerate(chunks, 1):
-                    header = f"📋 File List (Part {i}/{len(chunks)}):\n\n"
-                    bot.reply_to(message, header + chunk, parse_mode="Markdown", disable_web_page_preview=True)
+                    header = f"📋 Team Drive Contents (Part {i}/{len(chunks)}):\n\n"
+                    bot.reply_to(message, header + chunk, parse_mode="Markdown")
 
         except Exception as e:
-            bot.reply_to(message, f"❌ Error: {str(e)}")
+            bot.reply_to(message, f"❌ Error listing drive contents: {str(e)}")
 
     @bot.message_handler(commands=['driveinfo'])
     @check_owner(bot, db)
