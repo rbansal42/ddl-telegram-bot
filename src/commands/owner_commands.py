@@ -369,7 +369,7 @@ def register_owner_handlers(bot: TeleBot):
         """Handle member removal confirmation"""
         try:
             if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
-                bot.answer_callback_query(call.id, "⛔�� This action is only available to owners.")
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
                 return
                 
             _, member_id = call.data.split('_')
@@ -1093,7 +1093,7 @@ def register_owner_handlers(bot: TeleBot):
     def process_event_date(message, user_data):
         """Process the event date and create the folder"""
         try:
-            from datetime import datetime, timedelta
+            from datetime import datetime
             
             # Parse and validate date
             try:
@@ -1109,21 +1109,24 @@ def register_owner_handlers(bot: TeleBot):
             # Create folder in Drive
             folder = drive_service.create_folder(folder_name)
             
-            # Set sharing permissions with 5-day expiry
+            # Set sharing permissions
             sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+            
+            # Escape special characters for Markdown
+            escaped_name = user_data['event_name'].replace('[', '\\[').replace(']', '\\]').replace('_', '\\_')
+            escaped_url = sharing_url.replace('[', '\\[').replace(']', '\\]').replace('_', '\\_')
             
             # Format response
             response = (
-                f"✅ Event folder created successfully!\n\n"
-                f"{user_data['event_name']} - Pictures\n\n"
-                f"{sharing_url}\n\n"
-                "ℹ️ This link will expire in 5 days. Anyone with the link can add content until then."
+                f"✅ Event folder created successfully\\!\n\n"
+                f"{escaped_name} \\- Pictures\n\n"
+                f"{escaped_url}"
             )
             
             bot.reply_to(
                 message,
                 response,
-                parse_mode="Markdown",
+                parse_mode="MarkdownV2",
                 disable_web_page_preview=True
             )
             
