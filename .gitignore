@@ -24,4 +24,4 @@ __pycache__/
 *.db
 
 # Google Drive credentials
-**/service-account-key.json
+**/service-account.json
