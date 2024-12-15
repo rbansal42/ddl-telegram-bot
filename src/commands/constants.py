@@ -20,6 +20,16 @@ CMD_SPACE = 'space'
 CMD_MEME = 'meme'
 CMD_FUNNY = 'funny'
 CMD_MYID = 'myid'
+CMD_LISTMEMBERS = 'listmembers'
+CMD_REMOVEMEMBER = 'removemember'
+CMD_PENDING = 'pending'
+CMD_ADMINHELP = 'adminhelp'
+CMD_ADDADMIN = 'addadmin'
+CMD_REMOVEADMIN = 'removeadmin'
+CMD_LISTADMINS = 'listadmins'
+CMD_OWNERHELP = 'ownerhelp'
+CMD_LISTDRIVE = 'listdrive'
+CMD_DRIVEINFO = 'driveinfo'
 
 # Public commands (available to all users)
 PUBLIC_COMMANDS = [
@@ -36,27 +46,27 @@ PUBLIC_COMMANDS = [
 
 # Member commands
 MEMBER_COMMANDS = PUBLIC_COMMANDS + [
-    BotCommand(CMD_NEWEVENTFOLDER, "Create a new event folder"),
     BotCommand(CMD_LISTFOLDERS, "List all folders"),
     BotCommand(CMD_GETLINK, "Get folder link")
 ]
 
 # Admin commands
 ADMIN_COMMANDS = MEMBER_COMMANDS + [
-    BotCommand('listmembers', "List all registered members"),
-    BotCommand('removemember', "Remove a member from the system"),
-    BotCommand('pending', "List pending registration requests"),
-    BotCommand('adminhelp', "Show admin commands")
+    BotCommand(CMD_NEWEVENTFOLDER, "Create a new event folder"),
+    BotCommand(CMD_LISTMEMBERS, "List all registered members"),
+    BotCommand(CMD_REMOVEMEMBER, "Remove a member from the system"),
+    BotCommand(CMD_PENDING, "List pending registration requests"),
+    BotCommand(CMD_ADMINHELP, "Show admin commands")
 ]
 
 # Owner commands
 OWNER_COMMANDS = ADMIN_COMMANDS + [
-    BotCommand('addadmin', "Add a new admin user"),
-    BotCommand('removeadmin', "Remove an admin user"),
-    BotCommand('listadmins', "List all admin users"),
-    BotCommand('ownerhelp', "Show owner commands"),
-    BotCommand('listdrive', "List files in Team Drive"),
-    BotCommand('driveinfo', "Get Drive access information")
+    BotCommand(CMD_ADDADMIN, "Add a new admin user"),
+    BotCommand(CMD_REMOVEADMIN, "Remove an admin user"),
+    BotCommand(CMD_LISTADMINS, "List all admin users"),
+    BotCommand(CMD_OWNERHELP, "Show owner commands"),
+    BotCommand(CMD_LISTDRIVE, "List files in Team Drive"),
+    BotCommand(CMD_DRIVEINFO, "Get Drive access information")
 ]
 
 # Bot commands list
