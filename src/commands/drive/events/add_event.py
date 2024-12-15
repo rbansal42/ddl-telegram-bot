@@ -67,57 +67,41 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
 
     def process_event_date(message, user_data):
         """Process the event date and create the folder"""
+        print(f"\n[DEBUG] Processing event date for user {message.from_user.id}")
         try:
             # Parse and validate date
             try:
+                print(f"[DEBUG] Parsing date: {message.text.strip()}")
                 date = datetime.strptime(message.text.strip(), '%d/%m/%Y')
                 formatted_date = date.strftime('%Y-%m-%d')
+                print(f"[DEBUG] Formatted date: {formatted_date}")
             except ValueError:
+                print("[DEBUG] Invalid date format provided")
                 bot.reply_to(message, "❌ Invalid date format. Please use DD/MM/YYYY")
                 return
 
             # Create folder name
             folder_name = f"{formatted_date}; {user_data['event_name']}"
+            print(f"[DEBUG] Creating folder: {folder_name}")
             
             # Create folder in Drive
             folder = drive_service.create_folder(folder_name)
+            print(f"[DEBUG] Folder created with ID: {folder['id']}")
             
             # Set sharing permissions
+            print("[DEBUG] Setting folder permissions")
             sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+            print(f"[DEBUG] Sharing URL generated: {sharing_url}")
             
-            # Escape the texts using the helper function
-            escaped_name = escape_markdown(user_data['event_name'])
-            escaped_url = escape_markdown(sharing_url)
-            
-            # Format response
-            response = (
-                f"✅ Event folder created successfully\\!\n\n"
-                f"*Event:* {escaped_name}\n"
-                f"*Link:* {escaped_url}"
-            )
-            
-            bot.reply_to(
-                message,
-                response,
-                parse_mode="MarkdownV2",
-                disable_web_page_preview=True
-            )
-            
-            # Log action
-            log_action(
-                ActionType.FOLDER_CREATED,
-                message.from_user.id,
-                metadata={
-                    'folder_name': folder_name,
-                    'folder_id': folder['id']
-                }
-            )
-            
+            # Set upload state
+            print(f"[DEBUG] Setting upload state for user {message.from_user.id}")
             state_manager.set_state(message.from_user.id, {
                 'upload_mode': True,
                 'folder_id': folder['id'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60)
             })
+            
+            print("[DEBUG] Sending upload instructions")
             send_upload_instructions(bot, message.chat.id, folder['id'])
             
         except Exception as e:
