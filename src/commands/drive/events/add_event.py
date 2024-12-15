@@ -15,10 +15,12 @@ from src.utils.state_management import UserStateManager
 
 def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
     """Register event-related command handlers"""
+    print("[DEBUG] Registering event handlers...")
+    
     @bot.message_handler(commands=['addevent'])
     @check_event_permission(bot, db)
     def add_event(message):
-        """Start the process of adding a new event folder"""
+        print(f"[DEBUG] Add event command received from user {message.from_user.id}")
         try:
             # Create markup with cancel button
             markup = InlineKeyboardMarkup()
@@ -31,13 +33,77 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 reply_markup=markup
             )
             bot.register_next_step_handler(msg, process_event_name)
+            print(f"[DEBUG] Registered next step handler for event name for user {message.from_user.id}")
         except Exception as e:
+            print(f"[DEBUG] Error in add_event: {str(e)}")
             bot.reply_to(message, f"❌ Error: {str(e)}")
             log_action(
                 ActionType.COMMAND_FAILED,
                 message.from_user.id,
                 error_message=str(e),
                 metadata={'command': 'addevent'}
+            )
+
+    @bot.message_handler(commands=['testaddevent'])
+    @check_event_permission(bot, db)
+    def test_add_event(message):
+        print(f"[DEBUG] Add event test command received from user {message.from_user.id}")
+        try:
+            # Use test event name and today's date
+            event_name = "Test Event"
+            date = datetime.now()
+            formatted_date = date.strftime('%Y-%m-%d')
+            
+            # Create folder name and create in Drive
+            folder_name = f"{formatted_date}; {event_name}"
+            folder = drive_service.create_folder(folder_name)
+            sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+            
+            # Escape the texts
+            escaped_name = escape_markdown(event_name)
+            escaped_url = escape_markdown(sharing_url)
+            
+            # Send response
+            response = (
+                f"✅ Test event folder created successfully\\!\n\n"
+                f"*Event:* {escaped_name}\n"
+                f"*Link:* {escaped_url}"
+            )
+            
+            bot.reply_to(
+                message,
+                response,
+                parse_mode="MarkdownV2",
+                disable_web_page_preview=True
+            )
+            
+            # Log action
+            log_action(
+                ActionType.FOLDER_CREATED,
+                message.from_user.id,
+                metadata={
+                    'folder_name': folder_name,
+                    'folder_id': folder['id']
+                }
+            )
+            
+            # Set upload state
+            state_manager.set_state(message.from_user.id, {
+                'upload_mode': True,
+                'folder_id': folder['id'],
+                'upload_expires_at': datetime.now() + timedelta(minutes=60)
+            })
+            
+            send_upload_instructions(bot, message.chat.id, folder['id'])
+            
+        except Exception as e:
+            print(f"[DEBUG] Error in add_event_test: {str(e)}")
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'addeventtest'}
             )
 
     def process_event_name(message):
@@ -204,6 +270,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
 
     return {
         'add_event': add_event,
+        'test_add_event': test_add_event,
         'handle_date_option': handle_date_option,
         'handle_cancel_event': handle_cancel_event
     }

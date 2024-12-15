@@ -11,7 +11,7 @@ from src.database.mongo_db import MongoDB
 from src.middleware.auth import check_admin_or_owner
 from src.services.google.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
-
+from src.utils.state_management import UserStateManager
 # Import handlers from drive modules
 from src.commands.drive.core.list_handlers import register_list_handlers
 from src.commands.drive.events.add_event import register_event_handlers
@@ -19,13 +19,15 @@ from src.commands.drive.events.list_events import register_list_events_handlers
 
 def register_drive_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
     """Register all drive-related handlers"""
+    print("[DEBUG] Registering drive handlers...")
     
     # Register core drive handlers
     list_handlers = register_list_handlers(bot, drive_service, db)
+    print("[DEBUG] Core drive handlers registered")
     
     # Register event handlers
-    event_handlers = register_event_handlers(bot, db, drive_service)
     list_event_handlers = register_list_events_handlers(bot, db, drive_service)
+    print("[DEBUG] Event handlers registered")
     
     # Register drive info command
     @bot.message_handler(commands=['driveinfo'])
