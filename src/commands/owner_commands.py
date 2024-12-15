@@ -118,15 +118,10 @@ def register_owner_handlers(bot: TeleBot):
             bot.reply_to(message, f"❌ Error removing admin: {e}")
             
     @bot.callback_query_handler(func=lambda call: call.data.startswith('demote_'))
+    @check_owner(bot, db)
     def handle_admin_demotion(call):
+        """Handle admin demotion to member"""
         try:
-            user_id = call.from_user.id
-            user = db.users.find_one({'user_id': user_id})
-            
-            if not user or user.get('role') != Role.OWNER.name.lower():
-                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
-                return
-            
             _, admin_id = call.data.split('_')
             admin_id = int(admin_id)
             
@@ -145,30 +140,42 @@ def register_owner_handlers(bot: TeleBot):
 
     def demote_to_member(bot, db, chat_id, admin_id):
         """Helper function to demote an admin to member"""
-        user = db.users.find_one({'user_id': admin_id})
-        
-        if not user:
-            raise Exception("User not found.")
-            
-        if user.get('role') != Role.ADMIN.name.lower():
-            raise Exception("User is not an admin.")
-            
-        db.users.update_one(
-            {'user_id': admin_id},
-            {'$set': {'role': Role.MEMBER.name.lower()}}
-        )
-        
-        bot.send_message(chat_id, f"✅ User {admin_id} has been demoted to member.")
-        
         try:
-            notify_user(
-                bot,
-                NotificationType.DEMOTION_TO_MEMBER,
-                admin_id,
-                issuer_id=chat_id
+            user = db.users.find_one({'user_id': admin_id})
+            
+            if not user:
+                raise Exception("User not found.")
+            
+            if user.get('role') != Role.ADMIN.name.lower():
+                raise Exception("User is not an admin.")
+            
+            db.users.update_one(
+                {'user_id': admin_id},
+                {'$set': {'role': Role.MEMBER.name.lower()}}
             )
+            
+            log_action(
+                ActionType.ADMIN_DEMOTION,
+                chat_id,
+                metadata={
+                    'demoted_user_id': admin_id
+                }
+            )
+            
+            bot.send_message(chat_id, f"✅ User {admin_id} has been demoted to member.")
+            
+            try:
+                notify_user(
+                    bot,
+                    NotificationType.DEMOTION_TO_MEMBER,
+                    admin_id,
+                    issuer_id=chat_id
+                )
+            except Exception as e:
+                print(f"Failed to notify former admin: {e}")
+            
         except Exception as e:
-            print(f"Failed to notify former admin: {e}")
+            raise Exception(f"Failed to demote admin to member: {str(e)}")
 
     def promote_to_admin(bot, db, chat_id, member_id):
         """Helper function to promote a member to admin"""
@@ -206,7 +213,7 @@ def register_owner_handlers(bot: TeleBot):
             admin_list = list(admins)
             
             if not admin_list:
-                bot.reply_to(message, "📝 No admins found.")
+                bot.reply_to(message, "���� No admins found.")
                 return
                 
             response = "👥 *Admin List:*\n\n"
@@ -220,6 +227,191 @@ def register_owner_handlers(bot: TeleBot):
         except Exception as e:
             bot.reply_to(message, f"❌ Error listing admins: {e}")
             
+    @bot.message_handler(commands=['remove_member'])
+    @check_owner(bot, db)
+    def remove_member(message):
+        """Remove a member from the system"""
+        args = message.text.split()
+        if len(args) == 1:  # No user_id provided
+            try:
+                # Get all members
+                members = db.users.find({
+                    'registration_status': 'approved',
+                    'role': Role.MEMBER.name.lower()
+                })
+                member_list = list(members)
+                
+                if not member_list:
+                    bot.reply_to(message, "📝 No registered members found to remove.")
+                    return
+                    
+                # Create inline keyboard with member buttons
+                markup = types.InlineKeyboardMarkup()
+                for member in member_list:
+                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
+                    email = member.get('email', 'N/A')
+                    markup.add(
+                        types.InlineKeyboardButton(
+                            f"👤 {full_name} | 📧 {email}",
+                            callback_data=f"remove_{member['user_id']}"
+                        )
+                    )
+                
+                bot.reply_to(message, 
+                    "👥 *Select a member to remove:*",
+                    reply_markup=markup,
+                    parse_mode="Markdown")
+                
+            except Exception as e:
+                bot.reply_to(message, f"❌ Error listing members: {e}")
+                return
+        else:
+            try:
+                member_id = int(args[1])
+                member = db.users.find_one({'user_id': member_id})
+                
+                if not member:
+                    bot.reply_to(message, "❌ Member not found.")
+                    return
+                    
+                if member.get('role') != Role.MEMBER.name.lower():
+                    bot.reply_to(message, "❌ This user is not a member.")
+                    return
+                    
+                result = db.users.delete_one({'user_id': member_id})
+                if result.deleted_count > 0:
+                    bot.reply_to(message, f"✅ Member {member_id} has been removed.")
+                    try:
+                        notify_user(
+                            bot,
+                            NotificationType.MEMBER_REMOVED,
+                            member_id,
+                            issuer_id=message.from_user.id
+                        )
+                    except Exception as e:
+                        print(f"Failed to notify removed member: {e}")
+                else:
+                    bot.reply_to(message, "❌ Failed to remove member.")
+            except ValueError:
+                bot.reply_to(message, "❌ Invalid user ID format.")
+            except Exception as e:
+                bot.reply_to(message, f"❌ Error removing member: {e}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
+    @check_owner(bot, db)
+    def handle_remove_member(call):
+        """Handle member removal confirmation"""
+        try:
+            if not check_owner(bot, db)(lambda: True)(call.message):
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
+                return
+                
+            _, member_id = call.data.split('_')
+            member_id = int(member_id)
+            
+            member = db.users.find_one({'user_id': member_id})
+            if not member:
+                bot.answer_callback_query(call.id, "❌ Member not found.")
+                return
+                
+            if member.get('role') != Role.MEMBER.name.lower():
+                bot.answer_callback_query(call.id, "❌ This user is not a member.")
+                return
+            
+            result = db.users.delete_one({'user_id': member_id})
+            if result.deleted_count > 0:
+                bot.edit_message_text(
+                    f"✅ Member {member_id} has been removed.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+                try:
+                    notify_user(
+                        bot,
+                        NotificationType.MEMBER_REMOVED,
+                        member_id,
+                        issuer_id=call.from_user.id
+                    )
+                except Exception as e:
+                    print(f"Failed to notify removed member: {e}")
+            else:
+                bot.answer_callback_query(call.id, "❌ Failed to remove member.")
+                
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+            
+    @bot.callback_query_handler(func=lambda call: call.data.startswith(('confirm_remove_', 'cancel_remove_')))
+    def handle_remove_confirmation(call):
+        """Handle the confirmation of member removal"""
+        try:
+            if not check_owner(bot, db)(lambda: True)(call.message):
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to owners.")
+                return
+            
+            action, _, member_id = call.data.split('_')
+            member_id = int(member_id)
+            
+            if action == 'cancel':
+                bot.edit_message_text(
+                    "❌ Member removal cancelled.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+                bot.answer_callback_query(call.id)
+                return
+            
+            member = db.users.find_one({'user_id': member_id})
+            if not member:
+                bot.edit_message_text(
+                    "❌ Member not found.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+                bot.answer_callback_query(call.id)
+                return
+                
+            if member.get('role') != Role.MEMBER.name.lower():
+                bot.edit_message_text(
+                    "❌ This user is not a member.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+                bot.answer_callback_query(call.id)
+                return
+                
+            result = db.users.delete_one({'user_id': member_id})
+            if result.deleted_count > 0:
+                bot.edit_message_text(
+                    f"✅ Member {member_id} has been removed.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+                try:
+                    notify_user(
+                        bot,
+                        NotificationType.MEMBER_REMOVED,
+                        member_id,
+                        issuer_id=call.from_user.id
+                    )
+                except Exception as e:
+                    print(f"Failed to notify removed member: {e}")
+            else:
+                bot.edit_message_text(
+                    "❌ Failed to remove member.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="Markdown"
+                )
+            bot.answer_callback_query(call.id)
+                
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
     @bot.message_handler(commands=['ownerhelp'])
     @check_owner(bot, db)
     def owner_help(message):
@@ -232,6 +424,7 @@ def register_owner_handlers(bot: TeleBot):
             "removeadmin": "Remove an admin user",
             "listadmins": "List all admin users",
             "pending": "List all pending registrations",
+            "remove_member": "Remove a member from the system",
             "ownerhelp": "Show this help message"
         }
         
@@ -242,5 +435,33 @@ def register_owner_handlers(bot: TeleBot):
         help_text += "• `/addadmin 123456789` - Make user with ID 123456789 an admin\n"
         help_text += "• `/removeadmin 123456789` - Remove admin privileges from user\n"
         help_text += "• `/listadmins` - Show all current admins\n"
+        help_text += "• `/remove_member 123456789` - Remove member with ID 123456789\n"
         
         bot.reply_to(message, help_text, parse_mode="Markdown") 
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
+    def handle_admin_promotion(call):
+        """Handle member promotion to admin"""
+        try:
+            user_id = call.from_user.id
+            user = db.users.find_one({'user_id': user_id})
+            
+            if not user or user.get('role') != Role.OWNER.name.lower():
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
+                return
+            
+            _, member_id = call.data.split('_')
+            member_id = int(member_id)
+            
+            promote_to_admin(bot, db, call.message.chat.id, member_id)
+            
+            bot.edit_message_text(
+                f"✅ Admin promotion completed.",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown"
+            )
+            bot.answer_callback_query(call.id)
+            
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 
