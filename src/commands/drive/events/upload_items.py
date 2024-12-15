@@ -154,14 +154,25 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             media_groups[message.media_group_id]['messages'].append(message)
             media_groups[message.media_group_id]['last_update'] = time.time()
             
-            # Process media group after timeout
+            # Process media group after timeout or when we have collected enough messages
             current_time = time.time()
             group_data = media_groups[message.media_group_id]
             
-            if current_time - group_data['last_update'] >= MEDIA_GROUP_TIMEOUT:
-                print(f"[DEBUG] Processing media group after timeout: {len(group_data['messages'])} messages")
+            # Wait a short time to collect more messages
+            time.sleep(0.1)
+            
+            # Check if we should process the group
+            should_process = (
+                current_time - group_data['last_update'] >= MEDIA_GROUP_TIMEOUT or
+                len(group_data['messages']) >= 10  # Maximum media group size in Telegram
+            )
+            
+            if should_process:
+                print(f"[DEBUG] Processing media group after collecting {len(group_data['messages'])} messages")
                 handle_media_group(group_data['messages'], folder_id, user_id)
                 del media_groups[message.media_group_id]
+            else:
+                print(f"[DEBUG] Waiting for more media group messages. Current count: {len(group_data['messages'])}")
             
             return
         
@@ -271,5 +282,6 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
 
     return {
         'handle_file_upload': handle_file_upload,
-        'handle_upload_action': handle_upload_action
+        'handle_upload_action': handle_upload_action,
+        'cleanup_media_groups': cleanup_media_groups
     }
