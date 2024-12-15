@@ -13,6 +13,7 @@ from src.services.google.drive_service import GoogleDriveService
 from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
+from src.utils.message_helpers import escape_markdown
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
@@ -1112,14 +1113,7 @@ def register_owner_handlers(bot: TeleBot):
             # Set sharing permissions
             sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
             
-            # Function to escape special characters for MarkdownV2
-            def escape_markdown(text):
-                special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-                for char in special_chars:
-                    text = text.replace(char, f"\\{char}")
-                return text
-            
-            # Escape the texts
+            # Escape the texts using the helper function
             escaped_name = escape_markdown(user_data['event_name'])
             escaped_url = escape_markdown(sharing_url)
             
