@@ -6,8 +6,13 @@ from src.services.google.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.state_management import UserStateManager
 from src.utils.file_helpers import get_file_info
+from telebot.handler_backends import State, StatesGroup
+from typing import Dict, List
+import time
 
 def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
+    # Store media groups temporarily
+    media_groups: Dict[str, List] = {}
     
     def send_upload_status(message: Message, file_type: str, file_name: str, file_size: str):
         """Send upload status message"""
@@ -26,11 +31,92 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             "Please wait..."
         )
 
+    def handle_media_group(messages: List[Message], folder_id: str, user_id: int):
+        """Handle a group of media files"""
+        print(f"[DEBUG] Processing media group with {len(messages)} items")
+        
+        # Send initial status
+        status_msg = bot.reply_to(
+            messages[0],
+            f"📤 Uploading {len(messages)} files from group...\n"
+            "Please wait..."
+        )
+        
+        uploaded_files = []
+        failed_files = []
+        
+        for msg in messages:
+            try:
+                file_type, file_name, file_size = get_file_info(msg)
+                
+                # Get file info based on type
+                if msg.photo:
+                    file_info = bot.get_file(msg.photo[-1].file_id)
+                elif msg.video:
+                    file_info = bot.get_file(msg.video.file_id)
+                else:
+                    continue  # Skip unsupported types in groups
+                
+                # Download and upload file
+                downloaded_file = bot.download_file(file_info.file_path)
+                file = drive_service.upload_file(downloaded_file, file_name, folder_id)
+                
+                uploaded_files.append({
+                    'name': file_name,
+                    'size': file_size,
+                    'link': file.get('webViewLink', 'Not available')
+                })
+                
+                # Log successful upload
+                log_action(
+                    ActionType.FILE_UPLOADED,
+                    user_id,
+                    metadata={
+                        'file_name': file_name,
+                        'file_id': file['id'],
+                        'folder_id': folder_id,
+                        'file_type': file_type,
+                        'file_size': file_size,
+                        'media_group': True
+                    }
+                )
+                
+            except Exception as e:
+                print(f"[DEBUG] Error uploading file in media group: {str(e)}")
+                failed_files.append(file_name)
+                log_action(
+                    ActionType.UPLOAD_FAILED,
+                    user_id,
+                    error_message=str(e)
+                )
+        
+        # Update status message with results
+        response = f"✅ Media group upload completed\n\n"
+        
+        if uploaded_files:
+            response += "📥 *Successfully uploaded:*\n"
+            for file in uploaded_files:
+                response += f"• [{file['name']}]({file['link']}) ({file['size']})\n"
+        
+        if failed_files:
+            response += "\n❌ *Failed to upload:*\n"
+            for name in failed_files:
+                response += f"• {name}\n"
+        
+        bot.edit_message_text(
+            response,
+            status_msg.chat.id,
+            status_msg.message_id,
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
+
     @bot.message_handler(content_types=['document', 'photo', 'video', 'audio'])
     def handle_file_upload(message: Message):
         user_id = message.from_user.id
         print(f"\n[DEBUG] File upload attempt from user {user_id}")
         
+        # Check user state
         user_state = state_manager.get_state(user_id)
         if not user_state.get('upload_mode'):
             print(f"[DEBUG] User {user_id} not in upload mode")
@@ -46,8 +132,33 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             state_manager.clear_state(user_id)
             return
         
+        folder_id = user_state['folder_id']
+        
+        # Handle media groups
+        if message.media_group_id:
+            print(f"[DEBUG] Detected media group: {message.media_group_id}")
+            
+            # Store message in media group
+            if message.media_group_id not in media_groups:
+                media_groups[message.media_group_id] = {
+                    'messages': [],
+                    'timestamp': time.time()
+                }
+            media_groups[message.media_group_id]['messages'].append(message)
+            
+            # Wait briefly to collect all media group messages
+            time.sleep(0.5)  # Small delay to ensure all media group messages are received
+            
+            # Process media group if it's complete
+            if len(media_groups[message.media_group_id]['messages']) == message.media_group_id_size:
+                messages = media_groups[message.media_group_id]['messages']
+                handle_media_group(messages, folder_id, user_id)
+                del media_groups[message.media_group_id]
+            
+            return
+        
+        # Handle single file upload
         try:
-            folder_id = user_state['folder_id']
             file_type, file_name, file_size = get_file_info(message)
             
             # Send initial status message
@@ -75,7 +186,8 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 f"Size: {file_size}\n"
                 f"Link: {file.get('webViewLink', 'Not available')}",
                 status_msg.chat.id,
-                status_msg.message_id
+                status_msg.message_id,
+                disable_web_page_preview=True
             )
             
             log_action(
@@ -103,6 +215,16 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 user_id,
                 error_message=str(e)
             )
+
+    # Clean up old media groups periodically
+    def cleanup_media_groups():
+        current_time = time.time()
+        to_remove = []
+        for group_id, group_data in media_groups.items():
+            if current_time - group_data['timestamp'] > 60:  # Remove after 1 minute
+                to_remove.append(group_id)
+        for group_id in to_remove:
+            del media_groups[group_id]
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('upload_'))
     def handle_upload_action(call: CallbackQuery):
