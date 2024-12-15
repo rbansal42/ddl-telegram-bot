@@ -286,8 +286,12 @@ def create_upload_markup():
 def send_upload_instructions(bot, chat_id, folder_id):
     return bot.send_message(
         chat_id,
-        "📤 You can now upload files to this folder.\n"
-        "Simply send me any files or media within the next 60 minutes.\n"
-        "Press 'Done' when you're finished or 'Cancel' to stop uploading.",
+        "📤 *File Upload Session Started*\n\n"
+        "You can now upload files to this folder:\n"
+        "• Send any documents, photos, videos, or audio files\n"
+        "• Multiple files can be uploaded\n"
+        "• Session expires in 60 minutes\n\n"
+        "Press *Done* when finished or *Cancel* to stop uploading.",
+        parse_mode="Markdown",
         reply_markup=create_upload_markup()
     )
