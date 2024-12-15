@@ -4,6 +4,8 @@ from googleapiclient.errors import HttpError
 import os
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
+from dotenv import load_dotenv
+from pathlib import Path
 
 class DriveAccessLevel(Enum):
     NO_ACCESS = "no_access"
@@ -15,11 +17,28 @@ class DriveAccessLevel(Enum):
 
 class GoogleDriveService:
     def __init__(self):
+        # Load environment variables from .env file
+        env_path = Path(__file__).parent.parent.parent.parent / '.env'
+        load_dotenv(env_path)
+        
         self.SCOPES = ['https://www.googleapis.com/auth/drive']  # Full access needed for Team Drive
         self.credentials = None
         self.service = None
+        
+        # Get and validate environment variables
         self.team_drive_id = os.getenv('GDRIVE_TEAM_DRIVE_ID')
         self.root_folder_id = os.getenv('GDRIVE_ROOT_FOLDER_ID')
+        
+        # Debug prints
+        print(f"Team Drive ID: {self.team_drive_id}")
+        print(f"Root Folder ID: {self.root_folder_id}")
+        
+        # Validate required environment variables
+        if not self.team_drive_id:
+            raise ValueError("GDRIVE_TEAM_DRIVE_ID not set in environment variables")
+        if not self.root_folder_id:
+            raise ValueError("GDRIVE_ROOT_FOLDER_ID not set in environment variables")
+            
         self._initialize_service()
         self.verify_drive_access()  # Verify access on initialization
 
@@ -41,10 +60,10 @@ class GoogleDriveService:
         except Exception as e:
             raise Exception(f"Failed to initialize Google Drive service: {str(e)}")
 
-    def verify_drive_access(self) -> Tuple[bool, Dict[str, DriveAccessLevel]]:
+    def verify_drive_access(self) -> Tuple[bool, Dict[str, Dict]]:
         """
         Verify access levels for Team Drive and root folder
-        Returns: Tuple of (success_status, {resource: access_level})
+        Returns: Tuple of (success_status, {resource: {access_level, name, url}})
         """
         try:
             access_info = {}
@@ -59,22 +78,28 @@ class GoogleDriveService:
             
             # Determine Team Drive access level
             if capabilities.get('canManageTeamDrives'):
-                access_info['team_drive'] = DriveAccessLevel.OWNER
+                access_level = DriveAccessLevel.OWNER
             elif capabilities.get('canAddChildren'):
-                access_info['team_drive'] = DriveAccessLevel.WRITER
+                access_level = DriveAccessLevel.WRITER
             elif capabilities.get('canComment'):
-                access_info['team_drive'] = DriveAccessLevel.COMMENTER
+                access_level = DriveAccessLevel.COMMENTER
             elif capabilities.get('canDownload'):
-                access_info['team_drive'] = DriveAccessLevel.READER
+                access_level = DriveAccessLevel.READER
             else:
-                access_info['team_drive'] = DriveAccessLevel.NO_ACCESS
+                access_level = DriveAccessLevel.NO_ACCESS
                 raise Exception("Insufficient Team Drive access")
+
+            access_info['team_drive'] = {
+                'access_level': access_level,
+                'name': drive_response.get('name', 'Unknown Drive'),
+                'url': f"https://drive.google.com/drive/u/0/folders/{self.team_drive_id}"
+            }
 
             # Check root folder access
             folder_response = self.service.files().get(
                 fileId=self.root_folder_id,
                 supportsAllDrives=True,
-                fields='id, name, capabilities, permissions'
+                fields='id, name, capabilities, webViewLink'
             ).execute()
             
             folder_capabilities = folder_response.get('capabilities', {})
@@ -82,16 +107,23 @@ class GoogleDriveService:
             # Determine root folder access level
             if folder_capabilities.get('canEdit'):
                 if folder_capabilities.get('canShare'):
-                    access_info['root_folder'] = DriveAccessLevel.ORGANIZER
+                    access_level = DriveAccessLevel.ORGANIZER
                 else:
-                    access_info['root_folder'] = DriveAccessLevel.WRITER
+                    access_level = DriveAccessLevel.WRITER
             elif folder_capabilities.get('canComment'):
-                access_info['root_folder'] = DriveAccessLevel.COMMENTER
+                access_level = DriveAccessLevel.COMMENTER
             elif folder_capabilities.get('canReadRevisions'):
-                access_info['root_folder'] = DriveAccessLevel.READER
+                access_level = DriveAccessLevel.READER
             else:
-                access_info['root_folder'] = DriveAccessLevel.NO_ACCESS
+                access_level = DriveAccessLevel.NO_ACCESS
                 raise Exception("Insufficient root folder access")
+
+            access_info['root_folder'] = {
+                'access_level': access_level,
+                'name': folder_response.get('name', 'Unknown Folder'),
+                'url': folder_response.get('webViewLink', 
+                       f"https://drive.google.com/drive/u/0/folders/{self.root_folder_id}")
+            }
 
             return True, access_info
 
@@ -162,4 +194,55 @@ class GoogleDriveService:
 
             return folder
         except Exception as e:
-            raise Exception(f"Failed to create folder: {str(e)}") 
+            raise Exception(f"Failed to create folder: {str(e)}")
+
+    def list_files(self, folder_id: Optional[str] = None, recursive: bool = False) -> List[Dict]:
+        """
+        List all files and folders in the specified folder
+        Args:
+            folder_id: ID of the folder to list contents from (defaults to root folder)
+            recursive: Whether to list contents of subfolders recursively
+        """
+        try:
+            current_folder_id = folder_id or self.root_folder_id
+            
+            # Double check folder ID is available
+            if not current_folder_id:
+                raise ValueError("No folder ID provided and root folder ID not set")
+
+            # Verify folder exists and is accessible
+            try:
+                self.service.files().get(
+                    fileId=current_folder_id,
+                    supportsAllDrives=True
+                ).execute()
+            except Exception as e:
+                raise ValueError(f"Invalid or inaccessible folder ID: {current_folder_id}")
+
+            query = [
+                f"'{current_folder_id}' in parents",
+                "trashed=false"
+            ]
+
+            results = self.service.files().list(
+                q=" and ".join(query),
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora='drive',
+                driveId=self.team_drive_id,
+                fields='files(id, name, mimeType, createdTime, modifiedTime, webViewLink, size)',
+                orderBy='name'
+            ).execute()
+
+            files = results.get('files', [])
+
+            if recursive:
+                for file in files:
+                    if file['mimeType'] == 'application/vnd.google-apps.folder':
+                        subfiles = self.list_files(file['id'], recursive=True)
+                        file['children'] = subfiles
+
+            return files
+
+        except Exception as e:
+            raise Exception(f"Failed to list files: {str(e)}") 
