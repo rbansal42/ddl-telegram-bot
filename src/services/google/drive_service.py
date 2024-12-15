@@ -19,14 +19,16 @@ class DriveAccessLevel(Enum):
 
 class GoogleDriveService:
     _instance = None
+    _rclone_service = None
 
-    def __new__(cls):
+    def __new__(cls, rclone_service=None):
         if cls._instance is None:
             cls._instance = super(GoogleDriveService, cls).__new__(cls)
             cls._instance._initialized = False
+            cls._rclone_service = rclone_service
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, rclone_service=None):
         if self._initialized:
             return
             
@@ -37,6 +39,7 @@ class GoogleDriveService:
         self.SCOPES = ['https://www.googleapis.com/auth/drive']  # Full access needed for Team Drive
         self.credentials = None
         self.service = None
+        self.rclone_service = self._rclone_service or rclone_service
         
         # Get and validate environment variables
         self.team_drive_id = os.getenv('GDRIVE_TEAM_DRIVE_ID')
@@ -361,7 +364,7 @@ class GoogleDriveService:
 
     def upload_file(self, file_content: bytes, file_name: str, parent_folder_id: str) -> dict:
         """
-        Upload a file to Google Drive
+        Upload a file to Google Drive using rclone
         
         Args:
             file_content: The file content in bytes
@@ -374,27 +377,28 @@ class GoogleDriveService:
         try:
             print(f"[DEBUG] Starting file upload: {file_name} to folder: {parent_folder_id}")
             
-            file_metadata = {
-                'name': file_name,
-                'parents': [parent_folder_id]
+            # Create temporary file
+            temp_path = Path(f"/tmp/{file_name}")
+            temp_path.write_bytes(file_content)
+            
+            # Upload using injected rclone service
+            destination_path = f"{parent_folder_id}/{file_name}"
+            result = self.rclone_service.upload_file(str(temp_path), destination_path)
+            
+            # Cleanup temporary file
+            temp_path.unlink()
+            
+            # Return file metadata in the expected format
+            return {
+                'id': result.get('id', ''),
+                'name': result.get('name', file_name),
+                'mimeType': result.get('mimeType', ''),
+                'size': result.get('size', 0),
+                'webViewLink': result.get('webViewLink', '')
             }
-            
-            media = MediaIoBaseUpload(
-                io.BytesIO(file_content),
-                mimetype='application/octet-stream',
-                resumable=True
-            )
-            
-            file = self.service.files().create(
-                body=file_metadata,
-                media_body=media,
-                supportsAllDrives=True,
-                fields='id, name, mimeType, size, webViewLink'
-            ).execute()
-            
-            print(f"[DEBUG] File uploaded successfully. File ID: {file.get('id')}")
-            return file
             
         except Exception as e:
             print(f"[DEBUG] Error in upload_file: {str(e)}")
+            if 'temp_path' in locals() and temp_path.exists():
+                temp_path.unlink()
             raise Exception(f"Failed to upload file: {str(e)}")

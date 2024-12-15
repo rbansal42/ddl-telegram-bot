@@ -66,7 +66,8 @@ GDRIVE_ROOT_FOLDER_ID=your_root_folder_id
 ```
 
 5. Set up Google Drive credentials:
-- Place your `service-account.json` file in `src/credentials/`
+- Place your `service-account-key.json` file in `src/credentials/`
+- Run the setup script to configure rclone:
 
 ```bash
 git add README.md

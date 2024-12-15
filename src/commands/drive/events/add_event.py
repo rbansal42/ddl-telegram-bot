@@ -91,6 +91,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
             state_manager.set_state(message.from_user.id, {
                 'upload_mode': True,
                 'folder_id': folder['id'],
+                'folder_name': folder['name'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60)
             })
             
@@ -164,6 +165,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
             state_manager.set_state(message.from_user.id, {
                 'upload_mode': True,
                 'folder_id': folder['id'],
+                'folder_name': folder['name'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60)
             })
             
@@ -284,6 +286,7 @@ def create_upload_markup():
     return markup
 
 def send_upload_instructions(bot, chat_id, folder_id):
+    print(f"[DEBUG] Starting upload session for folder: {folder_id}")
     return bot.send_message(
         chat_id,
         "📤 *File Upload Session Started*\n\n"
