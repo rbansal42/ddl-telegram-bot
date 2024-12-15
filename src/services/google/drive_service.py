@@ -245,4 +245,65 @@ class GoogleDriveService:
             return files
 
         except Exception as e:
-            raise Exception(f"Failed to list files: {str(e)}") 
+            raise Exception(f"Failed to list files: {str(e)}")
+
+    def list_drives(self) -> List[Dict]:
+        """
+        List all shared drives accessible to the service account
+        Returns: List of drives with basic information
+        """
+        try:
+            drives = []
+            page_token = None
+            
+            while True:
+                response = self.service.drives().list(
+                    pageSize=100,
+                    pageToken=page_token,
+                    fields="nextPageToken, drives(id, name, kind)"
+                ).execute()
+                
+                drives.extend(response.get('drives', []))
+                
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    break
+                    
+            return [{
+                'id': drive['id'],
+                'name': drive['name'],
+                'type': drive['kind']
+            } for drive in drives]
+            
+        except Exception as e:
+            raise Exception(f"Failed to list drives: {str(e)}")
+
+    def list_team_drive_contents(self) -> List[Dict]:
+        """
+        List all files and folders at the root level of the Team Drive (non-recursive).
+        
+        Returns:
+            List[Dict]: List of file/folder metadata dictionaries with name and webViewLink
+        """
+        try:
+            # Query to get only root-level files and folders in the Team Drive
+            query = [
+                f"'{self.team_drive_id}' in parents",  # Only items in the specified root folder
+                "trashed=false"                        # Only non-trashed items
+            ]
+            
+            results = self.service.files().list(
+                driveId=self.team_drive_id,
+                corpora='drive',
+                includeItemsFromAllDrives=True,
+                supportsAllDrives=True,
+                fields='files(id, name, mimeType, webViewLink)',
+                orderBy='name',
+                q=" and ".join(query)
+            ).execute()
+
+            return results.get('files', [])
+
+        except HttpError as error:
+            print(f"Error listing Team Drive contents: {error}")
+            raise Exception(f"Failed to list Team Drive contents: {str(error)}") 
