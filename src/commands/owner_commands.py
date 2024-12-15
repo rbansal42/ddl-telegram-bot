@@ -8,6 +8,7 @@ from src.utils.user_actions import log_action, ActionType
 from src.utils.markup_helpers import create_promotion_markup, create_admin_list_markup
 from src.services.google.drive_service import GoogleDriveService
 from src.utils.file_helpers import format_file_size, format_timestamp
+from functools import wraps
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
@@ -209,27 +210,85 @@ def register_owner_handlers(bot: TeleBot):
 
     @bot.message_handler(commands=['listadmins'])
     @check_owner(bot, db)
-    def list_admins(message):
-        """List all admin users"""
+    def list_admins(message, page: int = 1):
+        """List all admin users with pagination"""
         try:
-            admins = db.users.find({'role': Role.ADMIN.name.lower()})
-            admin_list = list(admins)
-            
-            if not admin_list:
+            admins = list(db.users.find({'role': Role.ADMIN.name.lower()}))
+            if not admins:
                 bot.reply_to(message, "📝 No admins found.")
                 return
-                
-            response = "👥 *Admin List:*\n\n"
-            for admin in admin_list:
-                response += (f"• ID: `{admin['user_id']}`\n"
-                           f"  Username: @{admin.get('username', 'N/A')}\n"
-                           f"  Name: {admin.get('first_name', '')} {admin.get('last_name', '')}\n\n")
-                           
-            bot.reply_to(message, response, parse_mode="Markdown")
-            
+
+            # Pagination settings
+            page_size = 5
+            total_admins = len(admins)
+            total_pages = (total_admins + page_size - 1) // page_size
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_admins = admins[start_idx:end_idx]
+
+            # Build the response message
+            response = f"👥 *Admin List (Page {page}/{total_pages}):*\n\n"
+            for admin in current_admins:
+                response += (
+                    f"• ID: `{admin['user_id']}`\n"
+                    f"  Username: @{admin.get('username', 'N/A')}\n"
+                    f"  Name: {admin.get('first_name', '')} {admin.get('last_name', '')}\n\n"
+                )
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listadmins_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listadmins_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
+
+            bot.reply_to(
+                message,
+                response,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
+
         except Exception as e:
             bot.reply_to(message, f"❌ Error listing admins: {e}")
-            
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'listadmins'}
+            )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('listadmins_'))
+    def handle_list_admins_pagination(call):
+        """Handle pagination for listadmins command"""
+        try:
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+
+            # Call the list_admins function with the new page number
+            list_admins(call.message, page)
+
+            # Acknowledge the callback to remove the loading state
+            bot.answer_callback_query(call.id)
+
+        except ValueError:
+            bot.answer_callback_query(call.id, "❌ Invalid page number.")
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
     @bot.message_handler(commands=['remove_member'])
     @check_owner(bot, db)
     def remove_member(message):
@@ -469,48 +528,90 @@ def register_owner_handlers(bot: TeleBot):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 
 
-    @bot.message_handler(commands=['listdrive'])
+    @bot.message_handler(commands=['listteamdrive'])
     @check_owner(bot, db)
-    def list_drive_contents(message):
-        """List all files and folders in the Team Drive folder"""
+    def list_team_drive_contents(message, page: int = 1):
+        """List all files and folders in the Team Drive with pagination"""
         try:
-            files = drive_service.list_team_drive_contents()
-            
+            files = list(drive_service.list_team_drive_contents())
             if not files:
-                bot.reply_to(message, "📂 No files found in Team Drive.")
+                bot.reply_to(message, "📂 No files or folders found in Team Drive.")
                 return
 
-            response = "📂 *Team Drive Contents:*\n\n"
-            
-            # Process folders first
-            folders = [f for f in files if f['mimeType'] == 'application/vnd.google-apps.folder']
+            # Pagination settings
+            page_size = 5
+            total_files = len(files)
+            total_pages = (total_files + page_size - 1) // page_size
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_files = files[start_idx:end_idx]
+
+            # Build the response message
+            response = f"📂 *Team Drive Contents (Page {page}/{total_pages}):*\n\n"
+            folders = [f for f in current_files if f['mimeType'] == 'application/vnd.google-apps.folder']
+            files_only = [f for f in current_files if f['mimeType'] != 'application/vnd.google-apps.folder']
+
             if folders:
                 response += "*Folders:*\n"
                 for folder in folders:
-                    link = folder.get('webViewLink', '')
-                    response += f"📁 [{folder['name']}]({link})\n"
+                    response += f"📁 [{folder['name']}]({folder['webViewLink']})\n"
                 response += "\n"
-            
-            # Then process files
-            regular_files = [f for f in files if f['mimeType'] != 'application/vnd.google-apps.folder']
-            if regular_files:
+
+            if files_only:
                 response += "*Files:*\n"
-                for file in regular_files:
-                    link = file.get('webViewLink', '')
-                    response += f"📄 [{file['name']}]({link})\n"
+                for file in files_only:
+                    response += f"📄 [{file['name']}]({file['webViewLink']})\n"
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
 
             # Split response if needed
             max_length = 4096
             if len(response) <= max_length:
-                bot.reply_to(message, response, parse_mode="Markdown", disable_web_page_preview=True)
+                bot.reply_to(
+                    message,
+                    response,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
             else:
+                # Handle splitting messages if necessary
                 chunks = [response[i:i + max_length] for i in range(0, len(response), max_length)]
                 for i, chunk in enumerate(chunks, 1):
                     header = f"📋 Team Drive Contents (Part {i}/{len(chunks)}):\n\n"
-                    bot.reply_to(message, header + chunk, parse_mode="Markdown", disable_web_page_preview=True)
+                    bot.reply_to(
+                        message,
+                        header + chunk,
+                        parse_mode="Markdown",
+                        disable_web_page_preview=True,
+                        reply_markup=markup if i == 1 else None  # Only attach markup to the first chunk
+                    )
 
         except Exception as e:
-            bot.reply_to(message, f"❌ Error listing drive contents: {str(e)}")
+            bot.reply_to(message, f"❌ Error listing Team Drive contents: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'listteamdrive'}
+            )
 
     @bot.message_handler(commands=['driveinfo'])
     @check_owner(bot, db)
@@ -548,27 +649,405 @@ def register_owner_handlers(bot: TeleBot):
 
     @bot.message_handler(commands=['listdrives'])
     @check_owner(bot, db)
-    def list_drives(message):
-        """List all shared drives accessible to the service account"""
+    def list_drives(message, page: int = 1):
+        """List all shared drives with pagination"""
         try:
-            drives = drive_service.list_drives()
+            drives = list(drive_service.list_drives())
             if not drives:
                 bot.reply_to(message, "📂 No drives found.")
                 return
 
-            # Split drives into chunks of 10
-            chunk_size = 10
-            drive_chunks = [drives[i:i + chunk_size] for i in range(0, len(drives), chunk_size)]
+            # Pagination settings
+            page_size = 5
+            total_drives = len(drives)
+            total_pages = (total_drives + page_size - 1) // page_size
 
-            for i, chunk in enumerate(drive_chunks, 1):
-                response = f"📂 *Drive List (Part {i}/{len(drive_chunks)}):*\n\n"
-                
-                for drive in chunk:
-                    response += f"• *Name:* {drive['name']}\n"
-                    response += f"  *ID:* `{drive['id']}`\n"
-                    response += f"  *Type:* `{drive['type']}`\n\n"
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
 
-                bot.reply_to(message, response, parse_mode="Markdown")
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_drives = drives[start_idx:end_idx]
+
+            # Build the response message
+            response = f"📂 *Drive List (Page {page}/{total_pages}):*\n\n"
+            for drive in current_drives:
+                response += (
+                    f"• *Name:* {drive['name']}\n"
+                    f"  *ID:* `{drive['id']}`\n"
+                    f"  *Type:* `{drive['type']}`\n\n"
+                )
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
+
+            bot.reply_to(
+                message,
+                response,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
 
         except Exception as e:
             bot.reply_to(message, f"❌ Error listing drives: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'listdrives'}
+            )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('listdrives_'))
+    def handle_list_drives_pagination(call):
+        """Handle pagination for listdrives command"""
+        try:
+            # Debug prints
+            print("=== Drive Pagination Handler Debug ===")
+            print(f"Callback received from user ID: {call.from_user.id}")
+            print(f"Callback data: {call.data}")
+
+            # Hardcoded owner check for testing
+            if call.from_user.id != 940075808:  # Replace with your Telegram ID
+                print(f"Access denied for user {call.from_user.id}")
+                bot.answer_callback_query(call.id, "⛔️ This command is only available to the bot owner.")
+                return
+
+            print("Owner verified, proceeding with pagination")
+
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+            print(f"Requested page: {page}")
+
+            # Get drives list
+            drives = list(drive_service.list_drives())
+
+            # Pagination settings
+            page_size = 5
+            total_drives = len(drives)
+            total_pages = (total_drives + page_size - 1) // page_size
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_drives = drives[start_idx:end_idx]
+
+            # Build the response message
+            response = f"📂 *Drive List (Page {page}/{total_pages}):*\n\n"
+            for drive in current_drives:
+                response += (
+                    f"• *Name:* {drive['name']}\n"
+                    f"  *ID:* `{drive['id']}`\n"
+                    f"  *Type:* `{drive['type']}`\n\n"
+                )
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listdrives_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listdrives_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
+
+            # Update the existing message
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=response,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup=markup
+            )
+
+            # Acknowledge the callback
+            bot.answer_callback_query(call.id)
+
+        except ValueError as ve:
+            print(f"ValueError: {ve}")
+            bot.answer_callback_query(call.id, "❌ Invalid page number.")
+        except Exception as e:
+            print(f"Error in drive pagination handler: {str(e)}")
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('listteamdrive_'))
+    def handle_list_team_drive_pagination(call):
+        """Handle pagination for listteamdrive command"""
+        try:
+            # Debug prints
+            print("=== Team Drive Pagination Handler Debug ===")
+            print(f"Callback received from user ID: {call.from_user.id}")
+            print(f"Callback data: {call.data}")
+
+            # Hardcoded owner check for testing
+            if call.from_user.id != 940075808:  # Replace with your Telegram ID
+                print(f"Access denied for user {call.from_user.id}")
+                bot.answer_callback_query(call.id, "⛔️ This command is only available to the bot owner.")
+                return
+
+            print("Owner verified, proceeding with pagination")
+
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+            print(f"Requested page: {page}")
+
+            # Get team drive contents
+            files = list(drive_service.list_team_drive_contents())
+
+            # Pagination settings
+            page_size = 5
+            total_files = len(files)
+            total_pages = (total_files + page_size - 1) // page_size
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_files = files[start_idx:end_idx]
+
+            # Build the response message
+            response = f"📂 *Team Drive Contents (Page {page}/{total_pages}):*\n\n"
+            folders = [f for f in current_files if f['mimeType'] == 'application/vnd.google-apps.folder']
+            files_only = [f for f in current_files if f['mimeType'] != 'application/vnd.google-apps.folder']
+
+            if folders:
+                response += "*Folders:*\n"
+                for folder in folders:
+                    response += f"📁 [{folder['name']}]({folder['webViewLink']})\n"
+                response += "\n"
+
+            if files_only:
+                response += "*Files:*\n"
+                for file in files_only:
+                    response += f"📄 [{file['name']}]({file['webViewLink']})\n"
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listteamdrive_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listteamdrive_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
+
+            # Handle message length
+            max_length = 4096
+            if len(response) <= max_length:
+                # Update the existing message
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=response,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
+            else:
+                # For long messages, send a new message
+                chunks = [response[i:i + max_length] for i in range(0, len(response), max_length)]
+                for i, chunk in enumerate(chunks, 1):
+                    header = f"📋 Team Drive Contents (Part {i}/{len(chunks)}):\n\n"
+                    if i == 1:
+                        bot.edit_message_text(
+                            chat_id=call.message.chat.id,
+                            message_id=call.message.message_id,
+                            text=header + chunk,
+                            parse_mode="Markdown",
+                            disable_web_page_preview=True,
+                            reply_markup=markup
+                        )
+                    else:
+                        bot.send_message(
+                            call.message.chat.id,
+                            header + chunk,
+                            parse_mode="Markdown",
+                            disable_web_page_preview=True
+                        )
+            
+            # Acknowledge the callback
+            bot.answer_callback_query(call.id)
+
+        except ValueError as ve:
+            print(f"ValueError: {ve}")
+            bot.answer_callback_query(call.id, "❌ Invalid page number.")
+        except Exception as e:
+                print(f"Error in team drive pagination handler: {str(e)}")
+                bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    @bot.message_handler(commands=['listeventsfolder'])
+    @check_owner(bot, db)
+    def list_events_folder(message, page: int = 1):
+        """List contents of the events folder with pagination"""
+        try:
+            # Retrieve the root folder ID from environment variables
+            root_folder_id = os.getenv('GDRIVE_ROOT_FOLDER_ID')
+            if not root_folder_id:
+                bot.reply_to(message, "❌ Root folder ID is not configured.")
+                return
+            
+            # Fetch the contents of the root folder
+            items = drive_service.list_files(folder_id=root_folder_id, recursive=False)
+            if not items:
+                bot.reply_to(message, "📝 No items found in the events folder.")
+                return
+    
+            # Pagination settings
+            page_size = 5
+            total_items = len(items)
+            total_pages = (total_items + page_size - 1) // page_size
+    
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+    
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_items = items[start_idx:end_idx]
+    
+            # Build the response message
+            response = f"📂 *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
+            folders = [item for item in current_items if item['mimeType'] == 'application/vnd.google-apps.folder']
+            files_only = [item for item in current_items if item['mimeType'] != 'application/vnd.google-apps.folder']
+    
+            if folders:
+                response += "*Folders:*\n"
+                for folder in folders:
+                    response += f"📁 [{folder['name']}]({folder['webViewLink']})\n"
+                response += "\n"
+    
+            if files_only:
+                response += "*Files:*\n"
+                for file in files_only:
+                    file_size = format_file_size(int(file.get('size', 0))) if 'size' in file else 'N/A'
+                    response += f"📄 [{file['name']}]({file['webViewLink']}) - {file_size}\n"
+    
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+    
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
+    
+            if buttons:
+                markup.row(*buttons)
+    
+            bot.reply_to(
+                message,
+                response,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup=markup
+            )
+    
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error listing events folder contents: {e}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'listeventsfolder'}
+            )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('listeventsfolder_'))
+    def handle_list_events_folder_pagination(call):
+        """Handle pagination for listeventsfolder command"""
+        try:
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+            
+            # Get folder contents
+            root_folder_id = os.getenv('GDRIVE_ROOT_FOLDER_ID')
+            items = drive_service.list_files(folder_id=root_folder_id, recursive=False)
+            
+            # Pagination settings
+            page_size = 5
+            total_items = len(items)
+            total_pages = (total_items + page_size - 1) // page_size
+            
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+                
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_items = items[start_idx:end_idx]
+            
+            # Build the response message
+            response = f"📂 *Events Folder Contents (Page {page}/{total_pages}):*\n\n"
+            folders = [item for item in current_items if item['mimeType'] == 'application/vnd.google-apps.folder']
+            files_only = [item for item in current_items if item['mimeType'] != 'application/vnd.google-apps.folder']
+            
+            if folders:
+                response += "*Folders:*\n"
+                for folder in folders:
+                    response += f"📁 [{folder['name']}]({folder['webViewLink']})\n"
+                response += "\n"
+                
+            if files_only:
+                response += "*Files:*\n"
+                for file in files_only:
+                    file_size = format_file_size(int(file.get('size', 0))) if 'size' in file else 'N/A'
+                    response += f"📄 [{file['name']}]({file['webViewLink']}) - {file_size}\n"
+                    
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+            
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listeventsfolder_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listeventsfolder_{page+1}"))
+                
+            if buttons:
+                markup.row(*buttons)
+                
+            # Update the existing message
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=response,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup=markup
+            )
+            
+            # Acknowledge the callback
+            bot.answer_callback_query(call.id)
+
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")

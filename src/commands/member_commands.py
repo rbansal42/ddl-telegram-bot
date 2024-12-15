@@ -48,54 +48,86 @@ def register_member_handlers(bot: TeleBot):
     def handle_members_navigation(call):
         """Handle member list navigation"""
         try:
-            if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
+            # Debug prints
+            print("=== Members Pagination Handler Debug ===")
+            print(f"Callback received from user ID: {call.from_user.id}")
+            print(f"Callback data: {call.data}")
+
+            # Manual admin or owner check
+            user = db.users.find_one({'user_id': call.from_user.id})
+            if not user or user.get('role') not in [Role.ADMIN.name.lower(), Role.OWNER.name.lower()]:
+                print(f"Access denied for user {call.from_user.id}")
+                bot.answer_callback_query(call.id, "⛔️ This command is only available to admins and owner.")
                 return
-                
-            page = int(call.data.split('_')[1])
-            members = db.users.find({
+
+            print("Admin or Owner verified, proceeding with pagination")
+
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+            print(f"Requested page: {page}")
+
+            # Retrieve members
+            members = list(db.users.find({
                 'registration_status': 'approved',
                 'role': Role.MEMBER.name.lower()
-            })
-            member_list = list(members)
-            
+            }))
+            if not members:
+                bot.answer_callback_query(call.id, "📝 No members found.")
+                return
+
+            # Pagination settings
             page_size = 10
-            total_members = len(member_list)
+            total_members = len(members)
             total_pages = (total_members + page_size - 1) // page_size
-            
-            def create_member_page(page):
-                start_idx = (page - 1) * page_size
-                end_idx = min(start_idx + page_size, total_members)
-                
-                response = f"👥 *Members List (Page {page}/{total_pages}):*\n\n"
-                for member in member_list[start_idx:end_idx]:
-                    response += (f"• ID: `{member['user_id']}`\n"
-                               f"  Username: @{member.get('username', 'N/A')}\n"
-                               f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n")
-                return response
-                
-            def create_navigation_markup(current_page):
-                markup = types.InlineKeyboardMarkup()
-                buttons = []
-                
-                if current_page > 1:
-                    buttons.append(types.InlineKeyboardButton(
-                        "⬅️ Previous", callback_data=f"members_{current_page-1}"))
-                    
-                if current_page < total_pages:
-                    buttons.append(types.InlineKeyboardButton(
-                        "Next ➡️", callback_data=f"members_{current_page+1}"))
-                    
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_members = members[start_idx:end_idx]
+
+            # Build the response message
+            response = f"👥 *Members List (Page {page}/{total_pages}):*\n\n"
+            for member in current_members:
+                response += (
+                    f"• ID: `{member['user_id']}`\n"
+                    f"  Username: @{member.get('username', 'N/A')}\n"
+                    f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n"
+                )
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"members_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"members_{page+1}"))
+
+            if buttons:
                 markup.row(*buttons)
-                return markup
-                
+
+            # Update the existing message
             bot.edit_message_text(
-                create_member_page(page),
-                call.message.chat.id,
-                call.message.message_id,
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=response,
                 parse_mode="Markdown",
-                reply_markup=create_navigation_markup(page)
+                disable_web_page_preview=True,
+                reply_markup=markup
             )
+
+            # Acknowledge the callback
             bot.answer_callback_query(call.id)
-            
+
+        except ValueError as ve:
+            print(f"ValueError: {ve}")
+            bot.answer_callback_query(call.id, "❌ Invalid page number.")
         except Exception as e:
-            bot.answer_callback_query(call.id, f"Error: {str(e)}") 
+            print(f"Error in members pagination handler: {str(e)}")
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 

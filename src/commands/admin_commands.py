@@ -399,3 +399,88 @@ def register_admin_handlers(bot: TeleBot):
             
         except Exception as e:
             bot.answer_callback_query(call.id, f"Error: {str(e)}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('listadmins_'))
+    def handle_list_admins_pagination(call):
+        """Handle pagination for listadmins command"""
+        try:
+            # Debug prints
+            print("=== Admins Pagination Handler Debug ===")
+            print(f"Callback received from user ID: {call.from_user.id}")
+            print(f"Callback data: {call.data}")
+
+            # Manual admin or owner check
+            user = db.users.find_one({'user_id': call.from_user.id})
+            if not user or user.get('role') not in [Role.ADMIN.name.lower(), Role.OWNER.name.lower()]:
+                print(f"Access denied for user {call.from_user.id}")
+                bot.answer_callback_query(call.id, "⛔️ This command is only available to admins and owner.")
+                return
+
+            print("Admin or Owner verified, proceeding with pagination")
+
+            # Extract the requested page number from callback_data
+            _, page_str = call.data.split('_')
+            page = int(page_str)
+            print(f"Requested page: {page}")
+
+            # Retrieve admins
+            admins = list(db.users.find({'role': Role.ADMIN.name.lower()}))
+            if not admins:
+                bot.answer_callback_query(call.id, "📝 No admins found.")
+                return
+
+            # Pagination settings
+            page_size = 5
+            total_admins = len(admins)
+            total_pages = (total_admins + page_size - 1) // page_size
+
+            # Validate page number
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            current_admins = admins[start_idx:end_idx]
+
+            # Build the response message
+            response = f"👥 *Admin List (Page {page}/{total_pages}):*\n\n"
+            for admin in current_admins:
+                response += (
+                    f"• ID: `{admin['user_id']}`\n"
+                    f"  Username: @{admin.get('username', 'N/A')}\n"
+                    f"  Name: {admin.get('first_name', '')} {admin.get('last_name', '')}\n\n"
+                )
+
+            # Create navigation markup
+            markup = types.InlineKeyboardMarkup()
+            buttons = []
+
+            if page > 1:
+                buttons.append(types.InlineKeyboardButton("⬅️ Previous", callback_data=f"listadmins_{page-1}"))
+            if page < total_pages:
+                buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"listadmins_{page+1}"))
+
+            if buttons:
+                markup.row(*buttons)
+
+            # Update the existing message
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=response,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup=markup
+            )
+
+            # Acknowledge the callback
+            bot.answer_callback_query(call.id)
+
+        except ValueError as ve:
+            print(f"ValueError: {ve}")
+            bot.answer_callback_query(call.id, "❌ Invalid page number.")
+        except Exception as e:
+            print(f"Error in admins pagination handler: {str(e)}")
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
