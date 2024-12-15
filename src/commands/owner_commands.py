@@ -6,9 +6,12 @@ from src.middleware.auth import check_owner
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
 from src.utils.markup_helpers import create_promotion_markup, create_admin_list_markup
+from src.services.google.drive_service import GoogleDriveService
+from src.utils.file_helpers import format_file_size, format_timestamp
 
 def register_owner_handlers(bot: TeleBot):
     db = MongoDB()
+    drive_service = GoogleDriveService()
     
     @bot.message_handler(commands=['addadmin'])
     @check_owner(bot, db)
@@ -213,7 +216,7 @@ def register_owner_handlers(bot: TeleBot):
             admin_list = list(admins)
             
             if not admin_list:
-                bot.reply_to(message, "���� No admins found.")
+                bot.reply_to(message, "📝 No admins found.")
                 return
                 
             response = "👥 *Admin List:*\n\n"
@@ -465,3 +468,125 @@ def register_owner_handlers(bot: TeleBot):
             
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 
+
+    @bot.message_handler(commands=['listdrive'])
+    @check_owner(bot, db)
+    def list_drive_contents(message):
+        """List all files in the Team Drive folder"""
+        try:
+            args = message.text.split()
+            folder_id = args[1] if len(args) > 1 else None
+            recursive = False
+
+            files = drive_service.list_files(folder_id, recursive)
+            
+            if not files:
+                bot.reply_to(message, "📂 No files found in this folder.")
+                return
+
+            def format_file_list(files_list, level=0):
+                response = ""
+                indent = "  " * level
+                
+                for file in files_list:
+                    is_folder = file['mimeType'] == 'application/vnd.google-apps.folder'
+                    icon = "📂" if is_folder else "📄"
+                    size = format_file_size(int(file.get('size', 0))) if not is_folder else ""
+                    modified = format_timestamp(file['modifiedTime'])
+                    
+                    response += (
+                        f"{indent}{icon} *{file['name']}*\n"
+                        f"{indent}├ ID: `{file['id']}`\n"
+                        f"{indent}├ Modified: {modified}\n"
+                    )
+                    
+                    if size:
+                        response += f"{indent}├ Size: {size}\n"
+                    
+                    if file.get('webViewLink'):
+                        response += f"{indent}└ [Open in Drive]({file['webViewLink']})\n"
+                    
+                    response += "\n"
+                    
+                    # Recursively format children if present
+                    if file.get('children'):
+                        response += format_file_list(file['children'], level + 1)
+                
+                return response
+
+            # Create paginated response
+            full_response = format_file_list(files)
+            max_length = 4096  # Telegram message length limit
+            
+            # Split response into chunks if needed
+            if len(full_response) <= max_length:
+                bot.reply_to(message, full_response, parse_mode="Markdown", disable_web_page_preview=True)
+            else:
+                chunks = [full_response[i:i + max_length] for i in range(0, len(full_response), max_length)]
+                for i, chunk in enumerate(chunks, 1):
+                    header = f"📋 File List (Part {i}/{len(chunks)}):\n\n"
+                    bot.reply_to(message, header + chunk, parse_mode="Markdown", disable_web_page_preview=True)
+
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+
+    @bot.message_handler(commands=['driveinfo'])
+    @check_owner(bot, db)
+    def get_drive_info(message):
+        """Get information about Drive access and status"""
+        try:
+            success, access_info = drive_service.verify_drive_access()
+            
+            if not success:
+                bot.reply_to(message, f"❌ Drive access verification failed: {access_info.get('error')}")
+                return
+            
+            team_drive_info = access_info['team_drive']
+            root_folder_info = access_info['root_folder']
+            
+            response = (
+                "🔐 *Drive Access Information:*\n\n"
+                "*Team Drive:*\n"
+                f"├ Name: [{team_drive_info['name']}]({team_drive_info['url']})\n"
+                f"└ Access: `{team_drive_info['access_level'].value}`\n\n"
+                "*Root Folder:*\n"
+                f"├ Name: [{root_folder_info['name']}]({root_folder_info['url']})\n"
+                f"└ Access: `{root_folder_info['access_level'].value}`\n"
+            )
+            
+            bot.reply_to(
+                message, 
+                response, 
+                parse_mode="Markdown",
+                disable_web_page_preview=True  # Prevents link preview
+            )
+            
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}") 
+
+    @bot.message_handler(commands=['listdrives'])
+    @check_owner(bot, db)
+    def list_drives(message):
+        """List all shared drives accessible to the service account"""
+        try:
+            drives = drive_service.list_drives()
+            if not drives:
+                bot.reply_to(message, "📂 No drives found.")
+                return
+
+            # Split drives into chunks of 10
+            chunk_size = 10
+            drive_chunks = [drives[i:i + chunk_size] for i in range(0, len(drives), chunk_size)]
+
+            for i, chunk in enumerate(drive_chunks, 1):
+                response = f"📂 *Drive List (Part {i}/{len(drive_chunks)}):*\n\n"
+                
+                for drive in chunk:
+                    response += f"• *Name:* {drive['name']}\n"
+                    response += f"  *ID:* `{drive['id']}`\n"
+                    response += f"  *Type:* `{drive['type']}`\n\n"
+
+                bot.reply_to(message, response, parse_mode="Markdown")
+
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error listing drives: {str(e)}")
