@@ -13,131 +13,36 @@ from src.services.google.drive_service import GoogleDriveService
 from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType
 from src.utils.user_actions import log_action, ActionType
-from src.utils.message_helpers import escape_markdown
+from src.utils.message_helpers import escape_markdown, create_list_message
+from src.commands.owner.admin_management import register_admin_handlers
 
 def register_owner_handlers(bot: TeleBot):
+    """Register all owner-specific command handlers"""
     db = MongoDB()
     drive_service = GoogleDriveService()
     
-    @bot.message_handler(commands=['addadmin'])
-    @check_admin_or_owner(bot, db)
-    def add_admin(message):
-        """Add a new admin user"""
+    # Register admin management handlers
+    admin_handlers = register_admin_handlers(bot)
+    promote_to_admin = admin_handlers['promote_to_admin']
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
+    def handle_admin_promotion(call):
+        """Handle member promotion to admin"""
         try:
-            args = message.text.split()
-            if len(args) == 1:  # No user_id provided
-                # Get members query
-                members_query = {
-                    'registration_status': 'approved',
-                    'role': Role.MEMBER.name.lower()
-                }
-                
-                # Execute query
-                members = db.users.find(members_query)
-                member_list = list(members)
-                
-                if not member_list:
-                    bot.reply_to(message, "📝 No registered members found to promote.")
-                    return
-
-                # Create markup
-                markup = InlineKeyboardMarkup()
-                for member in member_list:
-                    # Format member info in one line
-                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
-                    email = member.get('email', 'N/A')
-                    user_id = member.get('user_id')
-                    
-                    # Single button with all info
-                    markup.add(
-                        InlineKeyboardButton(
-                            f"👤 {full_name} | 📧 {email}",
-                            callback_data=f"promote_{user_id}"
-                        )
-                    )
-                
-                bot.reply_to(message, 
-                    "👥 *Select a member to promote to admin:*",
-                    reply_markup=markup,
-                    parse_mode="Markdown")
-                
-            else:
-                new_admin_id = int(args[1])
-                promote_to_admin(bot, db, message.from_user.id, new_admin_id)
-                
-        except Exception as e:
-            print(f"❌ Error in add_admin: {e}")
-            log_action(
-                ActionType.COMMAND_FAILED,
-                message.from_user.id,
-                error_message=str(e),
-                metadata={'command': 'addadmin'}
-            )
-            bot.reply_to(message, f"❌ Error adding admin: {e}")
-
-    @bot.message_handler(commands=['removeadmin'])
-    @check_admin_or_owner(bot, db)
-    def remove_admin(message):
-        """Remove an admin user"""
-        try:
-            args = message.text.split()
-            if len(args) == 1:  # No user_id provided
-                admins = db.users.find(
-                    {'role': Role.ADMIN.name.lower()},
-                    {
-                        'user_id': 1,
-                        'username': 1,
-                        'first_name': 1,
-                        'last_name': 1,
-                        'email': 1,
-                        'role': 1
-                    }
-                )
-                admin_list = list(admins)
-                
-                if not admin_list:
-                    bot.reply_to(message, "📝 No admins found to demote.")
-                    return
-
-                # Create markup
-                markup = InlineKeyboardMarkup()
-                for admin in admin_list:
-                    # Format admin info in one line
-                    full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
-                    email = admin.get('email', 'N/A')
-                    user_id = admin.get('user_id')
-                    
-                    # Single button with all info
-                    markup.add(
-                        InlineKeyboardButton(
-                            f"👤 {full_name} | 📧 {email}",
-                            callback_data=f"demote_{user_id}"
-                        )
-                    )
-                
-                bot.reply_to(message, 
-                    "👥 *Select an admin to demote:*",
-                    reply_markup=markup,
-                    parse_mode="Markdown")
-            else:
-                admin_id = int(args[1])
-                demote_to_member(bot, db, message.from_user.id, admin_id)
-                
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error removing admin: {e}")
+            user_id = call.from_user.id
+            user = db.users.find_one({'user_id': user_id})
             
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('demote_'))
-    @check_admin_or_owner(bot, db)
-    def handle_admin_demotion(call):
-        """Handle admin demotion to member"""
-        try:
-            _, admin_id = call.data.split('_')
-            admin_id = int(admin_id)
+            if not user or user.get('role') != Role.OWNER.name.lower():
+                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
+                return
             
-            demote_to_member(bot, db, call.message.chat.id, admin_id)
+            _, member_id = call.data.split('_')
+            member_id = int(member_id)
+            
+            promote_to_admin(bot, db, call.message.chat.id, member_id)
             
             bot.edit_message_text(
-                f"✅ Admin demotion completed.",
+                f"✅ Admin promotion completed.",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown"
@@ -147,153 +52,7 @@ def register_owner_handlers(bot: TeleBot):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
-    def demote_to_member(bot, db, chat_id, admin_id):
-        """Helper function to demote an admin to member"""
-        try:
-            user = db.users.find_one({'user_id': admin_id})
-            
-            if not user:
-                raise Exception("User not found.")
-            
-            if user.get('role') != Role.ADMIN.name.lower():
-                raise Exception("User is not an admin.")
-            
-            db.users.update_one(
-                {'user_id': admin_id},
-                {'$set': {'role': Role.MEMBER.name.lower()}}
-            )
-            
-            log_action(
-                ActionType.ADMIN_DEMOTION,
-                chat_id,
-                metadata={
-                    'demoted_user_id': admin_id
-                }
-            )
-            
-            bot.send_message(chat_id, f"✅ User {admin_id} has been demoted to member.")
-            
-            try:
-                notify_user(
-                    bot,
-                    NotificationType.DEMOTION_TO_MEMBER,
-                    admin_id,
-                    issuer_id=chat_id
-                )
-            except Exception as e:
-                print(f"Failed to notify former admin: {e}")
-            
-        except Exception as e:
-            raise Exception(f"Failed to demote admin to member: {str(e)}")
-
-    def promote_to_admin(bot, db, chat_id, member_id):
-        """Helper function to promote a member to admin"""
-        user = db.users.find_one({'user_id': member_id})
-        
-        if not user:
-            raise Exception("User not found.")
-            
-        if user.get('role') != Role.MEMBER.name.lower():
-            raise Exception("User is not a member.")
-            
-        db.users.update_one(
-            {'user_id': member_id},
-            {'$set': {'role': Role.ADMIN.name.lower()}}
-        )
-        
-        bot.send_message(chat_id, f"✅ User {member_id} has been promoted to admin.")
-        
-        try:
-            notify_user(
-                bot,
-                NotificationType.PROMOTION_TO_ADMIN,
-                member_id,
-                issuer_id=chat_id
-            )
-        except Exception as e:
-            print(f"Failed to notify new admin: {e}")
-
-    @bot.message_handler(commands=['listadmins'])
-    @check_admin_or_owner(bot, db)
-    def list_admins(message, page: int = 1):
-        """List all admin users with pagination"""
-        try:
-            admins = list(db.users.find({'role': Role.ADMIN.name.lower()}))
-            if not admins:
-                bot.reply_to(message, "📝 No admins found.")
-                return
-
-            # Pagination settings
-            page_size = 5
-            total_admins = len(admins)
-            total_pages = (total_admins + page_size - 1) // page_size
-
-            # Validate page number
-            if page < 1:
-                page = 1
-            elif page > total_pages:
-                page = total_pages
-
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            current_admins = admins[start_idx:end_idx]
-
-            # Build the response message
-            response = f"👥 *Admin List (Page {page}/{total_pages}):*\n\n"
-            for admin in current_admins:
-                response += (
-                    f"• ID: `{admin['user_id']}`\n"
-                    f"  Username: @{admin.get('username', 'N/A')}\n"
-                    f"  Name: {admin.get('first_name', '')} {admin.get('last_name', '')}\n\n"
-                )
-
-            # Create navigation markup
-            markup = InlineKeyboardMarkup()
-            buttons = []
-
-            if page > 1:
-                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"listadmins_{page-1}"))
-            if page < total_pages:
-                buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"listadmins_{page+1}"))
-
-            if buttons:
-                markup.row(*buttons)
-
-            bot.reply_to(
-                message,
-                response,
-                parse_mode="Markdown",
-                reply_markup=markup
-            )
-
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error listing admins: {e}")
-            log_action(
-                ActionType.COMMAND_FAILED,
-                message.from_user.id,
-                error_message=str(e),
-                metadata={'command': 'listadmins'}
-            )
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('listadmins_'))
-    def handle_list_admins_pagination(call):
-        """Handle pagination for listadmins command"""
-        try:
-            # Extract the requested page number from callback_data
-            _, page_str = call.data.split('_')
-            page = int(page_str)
-
-            # Call the list_admins function with the new page number
-            list_admins(call.message, page)
-
-            # Acknowledge the callback to remove the loading state
-            bot.answer_callback_query(call.id)
-
-        except ValueError:
-            bot.answer_callback_query(call.id, "❌ Invalid page number.")
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
-
+    # Keep existing handlers (remove_member, drive commands, etc.)
     @bot.message_handler(commands=['remove_member'])
     @check_admin_or_owner(bot, db)
     def remove_member(message):
@@ -483,55 +242,74 @@ def register_owner_handlers(bot: TeleBot):
     @check_admin_or_owner(bot, db)
     def owner_help(message):
         """Show all owner-level commands"""
-        help_text = "👑 *Owner Commands:*\n\n"
         
-        # Add owner-specific commands
-        owner_commands = {
-            "addadmin": "Add a new admin user",
-            "removeadmin": "Remove an admin user",
-            "listadmins": "List all admin users",
-            "pending": "List all pending registrations",
-            "remove_member": "Remove a member from the system",
-            "ownerhelp": "Show this help message"
+        # Define command sections with their descriptions
+        drive_commands = {
+            '/listteamdrive': 'List all files in Team Drive',
+            '/driveinfo': 'Get Drive access information',
+            '/listdrives': 'List all shared drives'
         }
         
-        for cmd, desc in owner_commands.items():
-            help_text += f"/{cmd} - {desc}\n"
-            
-        help_text += "\n*Usage Examples:*\n"
-        help_text += "• `/addadmin 123456789` - Make user with ID 123456789 an admin\n"
-        help_text += "• `/removeadmin 123456789` - Remove admin privileges from user\n"
-        help_text += "• `/listadmins` - Show all current admins\n"
-        help_text += "• `/remove_member 123456789` - Remove member with ID 123456789\n"
+        member_commands = {
+            '/remove_member': 'Remove a member from the system'
+        }
         
-        bot.reply_to(message, help_text, parse_mode="Markdown") 
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
-    def handle_admin_promotion(call):
-        """Handle member promotion to admin"""
-        try:
-            user_id = call.from_user.id
-            user = db.users.find_one({'user_id': user_id})
+        admin_commands = {
+            '/addadmin': 'Add a new admin user',
+            '/removeadmin': 'Remove an admin user',
+            '/listadmins': 'List all admin users'
+        }
+        
+        other_commands = {
+            '/ownerhelp': 'Show this help message'
+        }
+        
+        # Create the help message using the helper functions
+        sections = [
+            ('Drive Management', drive_commands),
+            ('Member Management', member_commands),
+            ('Admin Management', admin_commands),
+            ('Other', other_commands)
+        ]
+        
+        # Build the message using create_list_message for each section
+        help_text = "*👑 Owner Commands:*\n\n"
+        
+        for section_title, commands in sections:
+            # Convert commands dict to list of dicts for create_list_message
+            command_items = [
+                {'command': cmd, 'description': desc}
+                for cmd, desc in commands.items()
+            ]
             
-            if not user or user.get('role') != Role.OWNER.name.lower():
-                bot.answer_callback_query(call.id, "⛔️ This action is only available to the bot owner.")
-                return
-            
-            _, member_id = call.data.split('_')
-            member_id = int(member_id)
-            
-            promote_to_admin(bot, db, call.message.chat.id, member_id)
-            
-            bot.edit_message_text(
-                f"✅ Admin promotion completed.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="Markdown"
+            section_message = create_list_message(
+                title=f"*{section_title}:*",
+                items=command_items,
+                item_template="{command} \\- {description}",
+                empty_message="No commands available."
             )
-            bot.answer_callback_query(call.id)
-            
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}") 
+            help_text += f"{section_message}\n"
+        
+        # Add usage examples
+        examples = [
+            {'command': '/remove_member 123456789', 'desc': 'Remove member with ID 123456789'},
+            {'command': '/listteamdrive', 'desc': 'Show contents of Team Drive'}
+        ]
+        
+        examples_section = create_list_message(
+            title="*Usage Examples:*",
+            items=examples,
+            item_template="• {command} \\- {desc}"
+        )
+        
+        help_text += f"\n{examples_section}"
+        
+        # Send the message
+        bot.reply_to(
+            message,
+            help_text,
+            parse_mode="MarkdownV2"
+        )
 
     @bot.message_handler(commands=['listteamdrive'])
     @check_admin_or_owner(bot, db)
@@ -1215,3 +993,8 @@ def register_owner_handlers(bot: TeleBot):
                 
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    return {
+        'admin_handlers': admin_handlers,
+        # Other handlers...
+    }
