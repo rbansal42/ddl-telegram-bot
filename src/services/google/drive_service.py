@@ -47,7 +47,7 @@ class GoogleDriveService:
         try:
             credentials_path = os.path.join(
                 os.path.dirname(__file__), 
-                '../../credentials/service_account.json'
+                '../../credentials/service-account-key.json'
             )
             
             if not os.path.exists(credentials_path):

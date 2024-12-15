@@ -25,3 +25,4 @@ __pycache__/
 
 # Google Drive credentials
 **/service-account.json
+**/service-account-key.json
