@@ -12,7 +12,7 @@ CMD_START = 'start'
 CMD_HELP = 'help'
 CMD_REGISTER = 'register'
 CMD_NEWEVENTFOLDER = 'neweventfolder'
-CMD_LISTFOLDERS = 'listfolders'
+CMD_LISTEVENTS = 'listevents'
 CMD_GETLINK = 'getlink'
 CMD_CAT = 'cat'
 CMD_DOG = 'dog'
@@ -46,8 +46,8 @@ PUBLIC_COMMANDS = [
 
 # Member commands
 MEMBER_COMMANDS = PUBLIC_COMMANDS + [
-    BotCommand(CMD_LISTFOLDERS, "List all folders"),
-    BotCommand(CMD_GETLINK, "Get folder link")
+    BotCommand(CMD_LISTEVENTS, "List all events"),
+    BotCommand(CMD_GETLINK, "Get event folder link")
 ]
 
 # Admin commands

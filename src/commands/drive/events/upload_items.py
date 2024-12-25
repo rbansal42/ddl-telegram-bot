@@ -3,6 +3,7 @@ from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from src.database.mongo_db import MongoDB
 from src.services.google.drive_service import GoogleDriveService
+from src.utils.message_helpers import escape_markdown
 from src.utils.user_actions import log_action, ActionType
 from src.utils.state_management import UserStateManager
 from src.utils.file_helpers import get_file_info, format_file_size
@@ -166,8 +167,8 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 size_str = format_file_size(total_size)
                 bot.edit_message_text(
                     f"⏳ *Processing Uploads*\n\n"
-                    f"Preparing to upload {file_count} files ({size_str}) to Drive\.\n"
-                    f"Please wait while files are being processed\.",
+                    f"Preparing to upload {file_count} files {escape_markdown(size_str)} to Drive\.\n" 
+                    f"Please wait while files are being {escape_markdown('processed.')}",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode="MarkdownV2"
@@ -195,7 +196,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     
                     status_text = (
                         f"⏳ *Uploading Files*\n\n"
-                        f"Progress: `[{progress_bar}]` {progress_percent:.1f}%\n"
+                        f"Progress: `[{escape_markdown(progress_bar)}]` {progress_percent:.1f}%\n"
                         f"File {index}/{total_files}: `{escape_markdown(file['name'])}`\n"
                         f"Total Size: {escape_markdown(size_str)}"
                     )
@@ -231,12 +232,12 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                         'video': '🎥',
                         'audio': '🎵'
                     }.get(file_type, '📁')
-                    summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) \\- {escape_markdown(file['size'])}\n"
+                    summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) - {escape_markdown(file['size'])}\n"
                 summary += f"\n*Total Size:* {escape_markdown(total_size)}"
                 
                 # Update final message
                 bot.edit_message_text(
-                    f"✅ *Upload Complete\\!*\n\n{summary}",
+                    f"✅ *Upload Complete!*\n\n{summary}",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode="MarkdownV2",
