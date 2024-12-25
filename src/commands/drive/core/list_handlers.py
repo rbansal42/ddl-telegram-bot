@@ -200,13 +200,30 @@ def register_list_handlers(bot: TeleBot, drive_service: GoogleDriveService, db: 
             status_msg = bot.reply_to(message, "🔍 Analyzing folder contents...")
 
             # Get folder details
+            bot.edit_message_text(
+                "🔍 Getting folder details...",
+                status_msg.chat.id,
+                status_msg.message_id
+            )
             folder_details = drive_service.get_folder_details(folder_id)
             folder_name = folder_details.get('name', 'Unknown Folder')
 
             # Get folder stats for media files
+            bot.edit_message_text(
+                "🔍 Analyzing media files...\n"
+                f"📁 Folder: {folder_name}",
+                status_msg.chat.id,
+                status_msg.message_id
+            )
             media_stats = drive_service.get_folder_stats(folder_id)
             
             # Get total folder size (all files)
+            bot.edit_message_text(
+                "🔍 Calculating total folder size...\n"
+                f"📁 Folder: {folder_name}",
+                status_msg.chat.id,
+                status_msg.message_id
+            )
             total_size = drive_service.get_folder_size(folder_id)
 
             # Format sizes
@@ -216,6 +233,13 @@ def register_list_handlers(bot: TeleBot, drive_service: GoogleDriveService, db: 
                         return f"{size_bytes:.1f} {unit}"
                     size_bytes /= 1024
                 return f"{size_bytes:.1f} TB"
+
+            bot.edit_message_text(
+                "📊 Preparing statistics...\n"
+                f"📁 Folder: {folder_name}",
+                status_msg.chat.id,
+                status_msg.message_id
+            )
 
             # Create response
             if media_stats['success']:
