@@ -70,12 +70,17 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
     @bot.message_handler(content_types=['document', 'photo', 'video', 'audio'])
     def handle_file_upload(message):
         user_id = message.from_user.id
+        logger.info(f"Received file upload from user {user_id}")
+        
         user_state = state_manager.get_state(user_id)
+        logger.debug(f"Current user state: {user_state}")
         
         if not user_state.get('upload_mode'):
+            logger.info(f"User {user_id} not in upload mode, ignoring file")
             return
             
         if datetime.now() > user_state.get('upload_expires_at', datetime.now()):
+            logger.warning(f"Upload session expired for user {user_id}")
             bot.reply_to(
                 message, 
                 "⏰ Upload session has expired.\nPlease create a new event folder to upload files."
@@ -85,31 +90,40 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             return
         
         try:
+            logger.info("Processing uploaded file")
             file_type, file_name, file_size = get_file_info(message)
+            logger.debug(f"File info - Type: {file_type}, Name: {file_name}, Size: {file_size}")
             
             # Get file info and size in bytes
             if message.document:
                 file_info = bot.get_file(message.document.file_id)
                 size_bytes = message.document.file_size
+                logger.debug("Processing document")
             elif message.photo:
                 file_info = bot.get_file(message.photo[-1].file_id)
                 size_bytes = file_info.file_size
+                logger.debug("Processing photo")
             elif message.video:
                 file_info = bot.get_file(message.video.file_id)
                 size_bytes = message.video.file_size
+                logger.debug("Processing video")
             elif message.audio:
                 file_info = bot.get_file(message.audio.file_id)
                 size_bytes = message.audio.file_size
+                logger.debug("Processing audio")
             
             # Save file locally
+            logger.info(f"Saving file {file_name} to temporary storage")
             temp_path = temp_handler.save_telegram_file(
                 bot, 
                 file_info, 
                 file_name, 
                 user_id
             )
+            logger.debug(f"File saved to {temp_path}")
             
             # Add to pending uploads with size in bytes
+            logger.info("Adding file to pending uploads")
             state_manager.add_pending_upload(user_id, {
                 'name': file_name,
                 'size': file_size,
@@ -120,6 +134,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             
             # Create or update status message
             if not user_state.get('status_message_id'):
+                logger.info("Creating new status message")
                 status_msg = bot.send_message(
                     message.chat.id,
                     "📤 *Upload Session Active*\n"
@@ -129,7 +144,9 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 )
                 user_state['status_message_id'] = status_msg.message_id
                 state_manager.set_state(user_id, user_state)
+                logger.debug(f"Created status message with ID: {status_msg.message_id}")
             else:
+                logger.info("Updating existing status message")
                 update_status_message(
                     message.chat.id,
                     user_state['status_message_id'],
@@ -137,11 +154,12 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 )
             
         except Exception as e:
-            print(f"[DEBUG] Error during file upload: {str(e)}")
+            logger.error(f"Error during file upload: {str(e)}", exc_info=True)
             bot.reply_to(message, f"❌ Failed to process file: {str(e)}")
 
     @bot.callback_query_handler(func=lambda call: call.data == "status_info")
     def handle_status_info(call: CallbackQuery):
+        logger.info(f"Status info requested by user {call.from_user.id}")
         bot.answer_callback_query(
             call.id,
             "These files will be uploaded when you press Done"
@@ -151,8 +169,10 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
     def handle_upload_action(call: CallbackQuery):
         user_id = call.from_user.id
         action = call.data.split('_')[1]
-        print(f"\n[DEBUG] Upload action {action} triggered by user {user_id}")
+        logger.info(f"Upload action {action} triggered by user {user_id}")
+        
         user_state = state_manager.get_state(user_id)
+        logger.debug(f"Current user state: {user_state}")
         
         if action == 'done':
             pending_uploads = state_manager.get_pending_uploads(user_id)
@@ -391,11 +411,20 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
     def handle_event_selection(call: CallbackQuery):
         """Handle event selection for upload"""
         try:
+            logger.info(f"Event selection callback received from user {call.from_user.id}")
+            logger.debug(f"Callback data: {call.data}")
+            
             event_id = call.data.split('_')[2]
+            logger.info(f"Extracted event ID: {event_id}")
+            
             events = drive_service.list_events()
+            logger.debug(f"Retrieved {len(events)} events from drive service")
+            
             event = next((e for e in events if e['id'] == event_id), None)
+            logger.info(f"Found event: {event['name'] if event else 'None'}")
             
             if not event:
+                logger.warning(f"Event {event_id} not found")
                 bot.answer_callback_query(call.id, "❌ Event not found")
                 return
 
@@ -406,23 +435,35 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 'folder_name': event['name'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60)
             }
+            logger.info(f"Setting state for user {call.from_user.id}: {state_data}")
             state_manager.set_state(call.from_user.id, state_data)
+            
+            # Verify state was set
+            current_state = state_manager.get_state(call.from_user.id)
+            logger.debug(f"Current state after setting: {current_state}")
 
             # Send upload instructions
-            bot.edit_message_text(
-                f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
-                "You can now upload files to this event:\n"
-                "• Send any documents, photos, videos, or audio files\n"
-                "• Multiple files can be uploaded\n"
-                "• Session expires in 60 minutes\n\n"
-                "Press *Done* when finished or *Cancel* to stop uploading.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="MarkdownV2",
-                reply_markup=create_status_markup(call.from_user.id)
-            )
+            logger.info(f"Sending upload instructions for event: {event['name']}")
+            try:
+                bot.edit_message_text(
+                    f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
+                    "You can now upload files to this event:\n"
+                    "• Send any documents, photos, videos, or audio files\n"
+                    "• Multiple files can be uploaded\n"
+                    "• Session expires in 60 minutes\n\n"
+                    "Press *Done* when finished or *Cancel* to stop uploading.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode="MarkdownV2",
+                    reply_markup=create_status_markup(call.from_user.id)
+                )
+                logger.info("Successfully sent upload instructions")
+            except Exception as e:
+                logger.error(f"Error sending upload instructions: {str(e)}")
+                raise
             
             bot.answer_callback_query(call.id)
+            logger.info("Event selection completed successfully")
             
         except Exception as e:
             logger.error(f"Error in handle_event_selection: {str(e)}", exc_info=True)
