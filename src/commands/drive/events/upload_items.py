@@ -185,7 +185,8 @@ class UploadManager:
             user_id = call.from_user.id
             logger.info(f"Event selection from user {user_id}")
             
-            event_id = call.data.split('_')[2]
+            # Extract event ID by removing the 'upload_event_' prefix
+            event_id = call.data.replace('upload_event_', '')
             logger.info(f"Selected event ID: {event_id}")
             
             # Get event details
