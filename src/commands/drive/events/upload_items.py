@@ -11,9 +11,14 @@ from src.utils.file_handler import TempFileHandler
 from telebot.handler_backends import State, StatesGroup
 from typing import Dict, List
 import time
+import logging
+
+logger = logging.getLogger(__name__)
+CMD_UPLOAD_TO_EVENT = 'upload_to_event'
 
 def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
     temp_handler = TempFileHandler()
+    ITEMS_PER_PAGE = 5
     
     def create_status_markup(user_id: int):
         file_count, total_size = state_manager.get_upload_stats(user_id)
@@ -284,7 +289,144 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                 user_id
             )
 
+    def handle_upload_to_event(message: Message | CallbackQuery, page: int = 0):
+        """Handle the upload to event command with pagination"""
+        try:
+            is_new_command = isinstance(message, Message)
+            user_id = message.from_user.id if is_new_command else message.from_user.id
+
+            # Get all events from database
+            events = db.get_events()
+            if not events:
+                error_text = "❌ No events found. Please create an event first."
+                if is_new_command:
+                    bot.reply_to(message, error_text)
+                else:
+                    bot.edit_message_text(error_text, message.message.chat.id, message.message.message_id)
+                return
+
+            # Calculate pagination
+            total_pages = (len(events) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+            page = max(0, min(page, total_pages - 1))
+            start_idx = page * ITEMS_PER_PAGE
+            end_idx = start_idx + ITEMS_PER_PAGE
+            current_events = events[start_idx:end_idx]
+
+            # Create event selection markup
+            markup = InlineKeyboardMarkup(row_width=1)
+            
+            # Add event buttons
+            for event in current_events:
+                event_name = event['name']
+                markup.add(InlineKeyboardButton(
+                    event_name,
+                    callback_data=f"upload_event_{event['id']}"
+                ))
+
+            # Add pagination buttons if needed
+            pagination_buttons = []
+            if page > 0:
+                pagination_buttons.append(
+                    InlineKeyboardButton("⬅️ Previous", callback_data=f"upload_page_{page-1}")
+                )
+            if page < total_pages - 1:
+                pagination_buttons.append(
+                    InlineKeyboardButton("➡️ Next", callback_data=f"upload_page_{page+1}")
+                )
+            if pagination_buttons:
+                markup.row(*pagination_buttons)
+
+            # Add cancel button
+            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="upload_cancel"))
+
+            message_text = (
+                "📤 *Select Event to Upload Media*\n\n"
+                "Choose an event to upload media files to:\n\n"
+                f"(Showing {start_idx+1}-{min(end_idx, len(events))} of {len(events)} events)"
+            )
+
+            if is_new_command:
+                bot.reply_to(message, message_text, parse_mode="Markdown", reply_markup=markup)
+            else:
+                bot.edit_message_text(
+                    message_text,
+                    message.message.chat.id,
+                    message.message.message_id,
+                    parse_mode="Markdown",
+                    reply_markup=markup
+                )
+
+        except Exception as e:
+            logger.error(f"Error in handle_upload_to_event: {str(e)}", exc_info=True)
+            error_message = f"❌ An error occurred: {str(e)}"
+            if is_new_command:
+                bot.reply_to(message, error_message)
+            else:
+                bot.edit_message_text(
+                    error_message,
+                    message.message.chat.id,
+                    message.message.message_id
+                )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('upload_page_'))
+    def handle_upload_pagination(call: CallbackQuery):
+        """Handle pagination for upload to event command"""
+        try:
+            page = int(call.data.split('_')[2])
+            handle_upload_to_event(call, page)
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logger.error(f"Error in handle_upload_pagination: {str(e)}", exc_info=True)
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('upload_event_'))
+    def handle_event_selection(call: CallbackQuery):
+        """Handle event selection for upload"""
+        try:
+            event_id = call.data.split('_')[2]
+            event = db.get_event(event_id)
+            
+            if not event:
+                bot.answer_callback_query(call.id, "❌ Event not found")
+                return
+
+            # Set up upload session state
+            state_data = {
+                'state': 'upload_mode',
+                'folder_id': event['folder_id'],
+                'folder_name': event['name'],
+                'upload_expires_at': datetime.now() + timedelta(minutes=60)
+            }
+            state_manager.set_state(call.from_user.id, state_data)
+
+            # Send upload instructions
+            bot.edit_message_text(
+                f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
+                "You can now upload files to this event:\n"
+                "• Send any documents, photos, videos, or audio files\n"
+                "• Multiple files can be uploaded\n"
+                "• Session expires in 60 minutes\n\n"
+                "Press *Done* when finished or *Cancel* to stop uploading.",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="MarkdownV2",
+                reply_markup=create_status_markup(call.from_user.id)
+            )
+            
+            bot.answer_callback_query(call.id)
+            
+        except Exception as e:
+            logger.error(f"Error in handle_event_selection: {str(e)}", exc_info=True)
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+
+    # Register the command handler
+    bot.register_message_handler(handle_upload_to_event, commands=[CMD_UPLOAD_TO_EVENT])
+
+    # Return all handlers
     return {
         'handle_file_upload': handle_file_upload,
-        'handle_upload_action': handle_upload_action
+        'handle_upload_action': handle_upload_action,
+        'handle_upload_to_event': handle_upload_to_event,
+        'handle_upload_pagination': handle_upload_pagination,
+        'handle_event_selection': handle_event_selection
     }
