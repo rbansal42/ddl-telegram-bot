@@ -302,6 +302,15 @@ class UploadManager:
             return
 
         try:
+            # Delete the media message immediately for instant feedback
+            try:
+                self.bot.delete_message(message.chat.id, message.message_id)
+                logger.debug(f"Deleted media message {message.message_id}")
+            except Exception as e:
+                # Ignore deletion errors (message might be already deleted)
+                logger.debug(f"Could not delete message {message.message_id}: {str(e)}")
+
+            # Process the file
             self.process_uploaded_file(message)
             logger.info(f"File from user {user_id} processed successfully")
         except Exception as e:
