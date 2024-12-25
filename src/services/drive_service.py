@@ -497,9 +497,75 @@ class GoogleDriveService:
             logger.error(f"Error listing events: {str(e)}", exc_info=True)
             return []
 
-    def copy_media_files(self, source_folder_id: str, target_folder_id: str) -> dict:
+    def get_folder_stats(self, folder_id: str) -> dict:
+        """
+        Get statistics about media files in a folder
+        Returns: dict with total count and size of media files
+        """
+        try:
+            # List of media MIME types to copy
+            MEDIA_MIME_TYPES = [
+                'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+                'video/mp4', 'video/quicktime', 'video/x-msvideo',
+                'audio/mpeg', 'audio/mp4', 'audio/wav'
+            ]
+            
+            def list_all_files(folder_id: str, page_token=None):
+                """Recursively list all files in a folder"""
+                files = []
+                total_size = 0
+                while True:
+                    # Query for files in the folder
+                    results = self.service.files().list(
+                        q=f"'{folder_id}' in parents and trashed=false",
+                        pageSize=1000,
+                        fields="nextPageToken, files(id, name, mimeType, size)",
+                        pageToken=page_token,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                        corpora='drive',
+                        driveId=self.team_drive_id
+                    ).execute()
+                    
+                    for item in results.get('files', []):
+                        if item['mimeType'] == 'application/vnd.google-apps.folder':
+                            # Recursively get files from subfolders
+                            sub_files, sub_size = list_all_files(item['id'])
+                            files.extend(sub_files)
+                            total_size += sub_size
+                        elif item['mimeType'] in MEDIA_MIME_TYPES:
+                            files.append(item)
+                            total_size += int(item.get('size', 0))
+                    
+                    page_token = results.get('nextPageToken')
+                    if not page_token:
+                        break
+                        
+                return files, total_size
+
+            # Get all media files and their total size
+            files, total_size = list_all_files(folder_id)
+            
+            return {
+                'success': True,
+                'total_files': len(files),
+                'total_size': total_size,
+                'files': files
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def copy_media_files(self, source_folder_id: str, target_folder_id: str, progress_callback=None) -> dict:
         """
         Copy all media files from source folder to target folder, flattening the structure
+        Args:
+            source_folder_id: ID of source folder
+            target_folder_id: ID of target folder
+            progress_callback: Optional callback function to report progress
         Returns: dict with success status and additional info
         """
         try:
@@ -550,26 +616,81 @@ class GoogleDriveService:
 
             # Copy each file to the target folder
             copied_count = 0
-            for file in all_files:
-                try:
-                    # Create a copy of the file
-                    copied_file = self.service.files().copy(
-                        fileId=file['id'],
-                        body={
-                            'name': file['name'],
-                            'parents': [target_folder_id]
-                        },
-                        supportsAllDrives=True
-                    ).execute()
-                    copied_count += 1
-                except Exception as e:
-                    print(f"Error copying file {file['name']}: {str(e)}")
-                    continue
+            total_files = len(all_files)
+            cancelled = False
+            
+            try:
+                for file in all_files:
+                    try:
+                        # Create a copy of the file
+                        copied_file = self.service.files().copy(
+                            fileId=file['id'],
+                            body={
+                                'name': file['name'],
+                                'parents': [target_folder_id]
+                            },
+                            supportsAllDrives=True
+                        ).execute()
+                        copied_count += 1
+                        
+                        # Call progress callback if provided
+                        if progress_callback:
+                            try:
+                                progress = (copied_count / total_files) * 100
+                                progress_callback(copied_count, total_files, progress)
+                            except Exception as e:
+                                if str(e) == "Process cancelled by user":
+                                    cancelled = True
+                                    break
+                                else:
+                                    logger.warning(f"Error in progress callback: {str(e)}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Error copying file {file['name']}: {str(e)}")
+                        continue
+                        
+                    if cancelled:
+                        break
+                        
+            except Exception as e:
+                logger.error(f"Error during file copy process: {str(e)}")
+                if not cancelled:
+                    raise
+
+            if cancelled:
+                # Clean up copied files
+                logger.info("Process cancelled, cleaning up copied files...")
+                for i in range(copied_count):
+                    try:
+                        file = all_files[i]
+                        # Search for the copied file in the target folder
+                        results = self.service.files().list(
+                            q=f"name='{file['name']}' and '{target_folder_id}' in parents",
+                            fields="files(id)",
+                            supportsAllDrives=True
+                        ).execute()
+                        
+                        # Delete the copied file
+                        for copied_file in results.get('files', []):
+                            self.service.files().delete(
+                                fileId=copied_file['id'],
+                                supportsAllDrives=True
+                            ).execute()
+                    except Exception as e:
+                        logger.warning(f"Error cleaning up file {file['name']}: {str(e)}")
+                        continue
+                
+                return {
+                    'success': False,
+                    'error': 'Process cancelled by user',
+                    'copied_files': copied_count,
+                    'total_files': total_files
+                }
 
             return {
                 'success': True,
                 'copied_files': copied_count,
-                'total_files': len(all_files)
+                'total_files': total_files
             }
 
         except Exception as e:
