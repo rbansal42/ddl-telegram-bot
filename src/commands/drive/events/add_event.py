@@ -22,18 +22,26 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
     def add_event(message):
         print(f"[DEBUG] Add event command received from user {message.from_user.id}")
         try:
-            # Create markup with cancel button
-            markup = InlineKeyboardMarkup()
-            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
-            
-            # Ask for event name
-            msg = bot.reply_to(
-                message, 
-                "📝 Please enter the name of the event:",
-                reply_markup=markup
-            )
-            bot.register_next_step_handler(msg, process_event_name)
-            print(f"[DEBUG] Registered next step handler for event name for user {message.from_user.id}")
+            # Check if event name was provided with command
+            command_parts = message.text.split(maxsplit=1)
+            if len(command_parts) > 1:
+                # Name provided with command, go directly to date selection
+                event_name = command_parts[1].strip()
+                ask_for_date(message, event_name)
+            else:
+                # Create markup with cancel button
+                markup = InlineKeyboardMarkup()
+                markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
+                
+                # Ask for event name
+                msg = bot.reply_to(
+                    message, 
+                    "📝 Please enter the name of the event:",
+                    reply_markup=markup
+                )
+                bot.register_next_step_handler(msg, process_event_name)
+                print(f"[DEBUG] Registered next step handler for event name for user {message.from_user.id}")
+                
         except Exception as e:
             print(f"[DEBUG] Error in add_event: {str(e)}")
             bot.reply_to(message, f"❌ Error: {str(e)}")
@@ -43,6 +51,47 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 error_message=str(e),
                 metadata={'command': 'addevent'}
             )
+
+    def ask_for_date(message, event_name):
+        """Ask user to select date option"""
+        try:
+            # Create markup for date options
+            markup = InlineKeyboardMarkup()
+            markup.row(
+                InlineKeyboardButton("📅 Custom Date", callback_data="date_custom"),
+                InlineKeyboardButton("📆 Today", callback_data="date_today")
+            )
+            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
+            
+            # Store event name in user data and ask for date
+            user_data = {'event_name': event_name}
+            bot.reply_to(
+                message,
+                f"Event Name: *{escape_markdown(event_name)}*\n\nChoose date option:",
+                parse_mode="MarkdownV2",
+                reply_markup=markup
+            )
+            
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+
+    def process_event_name(message):
+        """Process the event name and ask for date options"""
+        try:
+            if message.text.startswith('/'):
+                bot.reply_to(message, "❌ Event creation cancelled due to new command.")
+                return
+                
+            event_name = message.text.strip()
+            if not event_name:
+                msg = bot.reply_to(message, "❌ Event name cannot be empty. Please enter a valid name:")
+                bot.register_next_step_handler(msg, process_event_name)
+                return
+                
+            ask_for_date(message, event_name)
+            
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
 
     @bot.message_handler(commands=['testaddevent'])
     @check_event_permission(bot, db)
@@ -115,31 +164,6 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 error_message=str(e),
                 metadata={'command': 'addeventtest'}
             )
-
-    def process_event_name(message):
-        """Process the event name and ask for date options"""
-        try:
-            # Store event name in user data
-            user_data = {}
-            user_data['event_name'] = message.text.strip()
-            
-            # Create markup for date options
-            markup = InlineKeyboardMarkup()
-            markup.row(
-                InlineKeyboardButton("📅 Custom Date", callback_data="date_custom"),
-                InlineKeyboardButton("📆 Today", callback_data="date_today")
-            )
-            markup.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel_event"))
-            
-            # Ask for date preference
-            bot.reply_to(
-                message,
-                "Choose date option:",
-                reply_markup=markup
-            )
-            
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error: {str(e)}")
 
     def process_event_date(message, user_data):
         """Process the event date and create the folder"""
