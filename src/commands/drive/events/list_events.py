@@ -1,6 +1,6 @@
 # Standard library imports
 import os
-from typing import Optional
+from typing import Optional, List
 
 # Third-party imports
 from telebot import TeleBot
@@ -15,10 +15,14 @@ from src.utils.markup_helpers import create_navigation_markup
 from src.utils.message_helpers import split_and_send_messages
 from src.utils.drive_formatters import format_drive_items
 
+def sort_items_by_date(items: List[dict]) -> List[dict]:
+    """Sort items by their name which contains date in descending order (latest first)"""
+    return sorted(items, key=lambda x: x['name'], reverse=True)
+
 def register_list_events_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService):
     """Register event listing related command handlers"""
 
-    @bot.message_handler(commands=['listeventsfolder'])
+    @bot.message_handler(commands=['listevents'])
     @check_admin_or_owner(bot, db)
     def list_events_folder(message, page: int = 1):
         """List contents of the events folder with pagination"""
@@ -33,7 +37,10 @@ def register_list_events_handlers(bot: TeleBot, db: MongoDB, drive_service: Goog
                 bot.reply_to(message, "📝 No items found in the events folder.")
                 return
 
-            pagination_data = paginate_items(items, page)
+            # Sort items by date (latest first)
+            sorted_items = sort_items_by_date(items)
+            
+            pagination_data = paginate_items(sorted_items, page)
             response = f"📂 *Events Folder Contents (Page {pagination_data['page']}/{pagination_data['total_pages']}):*\n\n"
             response += format_drive_items(pagination_data['current_items'])
 
@@ -58,7 +65,10 @@ def register_list_events_handlers(bot: TeleBot, db: MongoDB, drive_service: Goog
             root_folder_id = os.getenv('GDRIVE_ROOT_FOLDER_ID')
             items = drive_service.list_files(folder_id=root_folder_id, recursive=False)
             
-            pagination_data = paginate_items(items, page)
+            # Sort items by date (latest first)
+            sorted_items = sort_items_by_date(items)
+            
+            pagination_data = paginate_items(sorted_items, page)
             response = f"📂 *Events Folder Contents (Page {pagination_data['page']}/{pagination_data['total_pages']}):*\n\n"
             response += format_drive_items(pagination_data['current_items'])
 
