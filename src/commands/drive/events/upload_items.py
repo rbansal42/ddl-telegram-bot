@@ -302,30 +302,11 @@ class UploadManager:
             return
 
         try:
-            # Delete the media message immediately for instant feedback
-            try:
-                self.bot.delete_message(message.chat.id, message.message_id)
-                logger.debug(f"Deleted media message {message.message_id}")
-            except Exception as e:
-                # Ignore deletion errors (message might be already deleted)
-                logger.debug(f"Could not delete message {message.message_id}: {str(e)}")
+            # Get file info first
+            file_type, file_name, file_size = get_file_info(message)
+            logger.info(f"Processing file: {file_name} ({file_type})")
 
-            # Process the file
-            self.process_uploaded_file(message)
-            logger.info(f"File from user {user_id} processed successfully")
-        except Exception as e:
-            logger.error(f"Error processing file: {str(e)}", exc_info=True)
-            error_msg = escape_markdown(str(e))
-            self.bot.reply_to(message, f"❌ Error processing file: {error_msg}", parse_mode="MarkdownV2")
-
-    def process_uploaded_file(self, message: Message):
-        """Process an uploaded file"""
-        user_id = message.from_user.id
-        file_type, file_name, file_size = get_file_info(message)
-        logger.info(f"Processing file: {file_name} ({file_type})")
-
-        try:
-            # Get file info
+            # Get file details based on type
             if message.document:
                 file_info = self.bot.get_file(message.document.file_id)
                 size_bytes = message.document.file_size
@@ -346,7 +327,7 @@ class UploadManager:
                 logger.error("Unsupported file type")
                 raise ValueError("Unsupported file type")
 
-            # Save file
+            # Save file to temporary storage
             logger.debug(f"Saving file to temporary storage: {file_name}")
             temp_path = self.temp_handler.save_telegram_file(
                 self.bot,
@@ -366,7 +347,7 @@ class UploadManager:
                 'path': temp_path
             })
 
-            # Update the original message with status
+            # Update the status message
             user_state = self.state_manager.get_state(user_id)
             file_count, total_size = self.state_manager.get_upload_stats(user_id)
             
@@ -387,11 +368,20 @@ class UploadManager:
                 reply_markup=self.create_status_markup(user_id)
             )
 
+            # Delete the media message last
+            try:
+                self.bot.delete_message(message.chat.id, message.message_id)
+                logger.debug(f"Deleted media message {message.message_id}")
+            except Exception as e:
+                # Ignore deletion errors (message might be already deleted)
+                logger.debug(f"Could not delete message {message.message_id}: {str(e)}")
+
             logger.info(f"File {file_name} processed successfully")
 
         except Exception as e:
-            logger.error(f"Error in process_uploaded_file: {str(e)}", exc_info=True)
-            raise
+            logger.error(f"Error processing file: {str(e)}", exc_info=True)
+            error_msg = escape_markdown(str(e))
+            self.bot.reply_to(message, f"❌ Error processing file: {error_msg}", parse_mode="MarkdownV2")
 
     def process_uploads(self, call: CallbackQuery):
         """Process all pending uploads"""
