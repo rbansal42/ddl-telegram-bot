@@ -150,28 +150,28 @@ class UploadManager:
             text = (
                 "📤 *Select Event to Upload Media*\n\n"
                 "Choose an event to upload media files to:\n\n"
-                f"(Showing {start_idx+1}-{min(end_idx, len(events))} of {len(events)} events)"
+                f"\\(Showing {start_idx+1}\\-{min(end_idx, len(events))} of {len(events)} events\\)"
             )
 
             # Send or edit message
             if is_new_message:
-                self.bot.reply_to(message, text, parse_mode="Markdown", reply_markup=markup)
+                self.bot.reply_to(message, text, parse_mode="MarkdownV2", reply_markup=markup)
             else:
                 self.bot.edit_message_text(
                     text,
                     chat_id,
                     message_id,
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                     reply_markup=markup
                 )
 
         except Exception as e:
             logger.error(f"Error showing event list: {str(e)}", exc_info=True)
-            error_msg = f"❌ Error: {str(e)}"
+            error_msg = escape_markdown(str(e))
             if is_new_message:
-                self.bot.reply_to(message, error_msg)
+                self.bot.reply_to(message, error_msg, parse_mode="MarkdownV2")
             else:
-                self.bot.edit_message_text(error_msg, chat_id, message_id)
+                self.bot.edit_message_text(error_msg, chat_id, message_id, parse_mode="MarkdownV2")
 
     def handle_event_selection(self, call: CallbackQuery):
         """Handle event selection"""
@@ -410,7 +410,7 @@ class UploadManager:
                 
                 status_text = (
                     "⏳ *Uploading Files*\n\n"
-                    f"Progress: `[{progress_bar}]` {progress:.1f}%\n"
+                    f"Progress: `\\[{progress_bar}\\]` {progress:.1f}\\%\n"
                     f"File {index}/{total_files}: `{escape_markdown(file['name'])}`"
                 )
                 
@@ -435,7 +435,7 @@ class UploadManager:
 
             # Show completion message
             total_size = format_file_size(sum(f['size_bytes'] for f in uploaded_files))
-            summary = "*Successfully Uploaded Files:*\n"
+            summary = "*Successfully Uploaded Files:*\n\n"
             for file in uploaded_files:
                 emoji = {
                     'document': '📄',
