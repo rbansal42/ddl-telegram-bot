@@ -12,21 +12,32 @@ from src.services.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.message_helpers import escape_markdown
 from src.utils.state_management import UserStateManager
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Disable connection logs
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('pymongo.topology').setLevel(logging.WARNING)
+logging.getLogger('telebot').setLevel(logging.WARNING)
 
 def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriveService, state_manager: UserStateManager):
     """Register event-related command handlers"""
-    print("[DEBUG] Registering event handlers...")
+    logger.info("Registering event handlers...")
     
     @bot.message_handler(commands=['addevent', 'newevent'])
     @check_event_permission(bot, db)
     def add_event(message):
-        print(f"[DEBUG] Add event command received from user {message.from_user.id}")
+        logger.info(f"Add event command received from user {message.from_user.id}")
         try:
             # Check if event name was provided with command
             command_parts = message.text.split(maxsplit=1)
             if len(command_parts) > 1:
                 # Name provided with command, go directly to date selection
                 event_name = command_parts[1].strip()
+                logger.debug(f"Event name provided with command: {event_name}")
                 ask_for_date(message, event_name)
             else:
                 # Create markup with cancel button
@@ -40,10 +51,10 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                     reply_markup=markup
                 )
                 bot.register_next_step_handler(msg, process_event_name)
-                print(f"[DEBUG] Registered next step handler for event name for user {message.from_user.id}")
+                logger.debug(f"Registered next step handler for event name for user {message.from_user.id}")
                 
         except Exception as e:
-            print(f"[DEBUG] Error in add_event: {str(e)}")
+            logger.error(f"Error in add_event: {str(e)}", exc_info=True)
             bot.reply_to(message, f"❌ Error: {str(e)}")
             log_action(
                 ActionType.COMMAND_FAILED,
@@ -227,18 +238,23 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
     def handle_date_option(call):
         """Handle date option selection"""
         try:
+            logger.info(f"Processing date option selection from user {call.from_user.id}")
             option = call.data.split('_')[1]
             user_data = {}
             user_data['event_name'] = call.message.reply_to_message.text.strip()
+            logger.debug(f"Date option: {option}, Event name: {user_data['event_name']}")
             
             if option == 'today':
                 # Use current date
                 date = datetime.now()
                 formatted_date = date.strftime('%Y-%m-%d')
+                logger.debug(f"Using today's date: {formatted_date}")
                 
                 # Create folder name and check if exists
                 folder_name = f"{formatted_date}; {user_data['event_name']}"
+                logger.debug(f"Checking if folder exists: {folder_name}")
                 if drive_service.folder_exists(folder_name):
+                    logger.warning(f"Folder already exists: {folder_name}")
                     bot.edit_message_text(
                         "❌ An event folder with this name already exists for today.\n"
                         "Please use a different event name or date.",
@@ -248,8 +264,12 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                     return
                 
                 # Create folder directly
+                logger.info(f"Creating folder: {folder_name}")
                 folder = drive_service.create_folder(folder_name)
+                logger.debug(f"Folder created with ID: {folder['id']}")
+                
                 sharing_url = drive_service.set_folder_sharing_permissions(folder['id'])
+                logger.debug(f"Sharing URL generated: {sharing_url}")
                 
                 # Escape the texts using the helper function
                 escaped_name = escape_markdown(user_data['event_name'])
@@ -257,7 +277,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 
                 # Format response
                 response = (
-                    f"�� Event folder created successfully\\!\n\n"
+                    f"✅ Event folder created successfully\\!\n\n"
                     f"*Event:* {escaped_name}\n"
                     f"*Link:* {escaped_url}"
                 )
@@ -279,15 +299,22 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                         'folder_id': folder['id']
                     }
                 )
+                logger.info(f"Event folder created successfully: {folder_name}")
                 
-                state_manager.set_state(call.from_user.id, {
-                    'upload_mode': True,
+                # Set upload state
+                state_data = {
+                    'state': 'upload_mode',
                     'folder_id': folder['id'],
+                    'folder_name': folder['name'],
                     'upload_expires_at': datetime.now() + timedelta(minutes=60)
-                })
+                }
+                state_manager.set_state(call.from_user.id, state_data)
+                logger.debug(f"Upload state set for user {call.from_user.id}: {state_data}")
+                
                 send_upload_instructions(bot, call.message.chat.id, folder['id'])
                 
             else:  # custom date
+                logger.debug("User selected custom date option")
                 msg = bot.edit_message_text(
                     "📅 Please enter the event date in format DD/MM/YYYY:",
                     call.message.chat.id,
@@ -296,6 +323,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 bot.register_next_step_handler(msg, process_event_date, user_data)
                 
         except Exception as e:
+            logger.error(f"Error in handle_date_option: {str(e)}", exc_info=True)
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
     @bot.callback_query_handler(func=lambda call: call.data == "cancel_event")

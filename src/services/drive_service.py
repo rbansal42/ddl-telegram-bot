@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Tuple
 from enum import Enum
 from pathlib import Path
 import io
+import logging
 
 # Third-party imports
 from google.oauth2 import service_account
@@ -11,6 +12,16 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from dotenv import load_dotenv
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Disable connection logs
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('pymongo.topology').setLevel(logging.WARNING)
+logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.WARNING)
+logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
 
 class DriveAccessLevel(Enum):
     NO_ACCESS = "no_access"
@@ -338,31 +349,40 @@ class GoogleDriveService:
             str: The sharing URL
         """
         try:
+            logger.info(f"Setting sharing permissions for folder: {folder_id}")
+            
             # Create sharing permission
             permission = {
                 'type': 'anyone',
                 'role': 'writer',
                 'allowFileDiscovery': False
             }
+            logger.debug(f"Permission configuration: {permission}")
             
             # Apply the permission
+            logger.debug("Applying permissions...")
             self.service.permissions().create(
                 fileId=folder_id,
                 body=permission,
                 supportsAllDrives=True,
                 sendNotificationEmail=False
             ).execute()
+            logger.debug("Permissions applied successfully")
             
             # Get sharing link
+            logger.debug("Retrieving sharing link...")
             file = self.service.files().get(
                 fileId=folder_id,
                 fields='webViewLink',
                 supportsAllDrives=True
             ).execute()
             
-            return file.get('webViewLink')
+            sharing_url = file.get('webViewLink', f'https://drive.google.com/drive/folders/{folder_id}')
+            logger.info(f"Sharing URL generated: {sharing_url}")
+            return sharing_url
             
         except Exception as e:
+            logger.error(f"Failed to set folder permissions: {str(e)}", exc_info=True)
             raise Exception(f"Failed to set folder permissions: {str(e)}")
 
     def upload_file(self, file_content: bytes, file_name: str, parent_folder_id: str) -> dict:
@@ -378,13 +398,14 @@ class GoogleDriveService:
             dict: The uploaded file's metadata
         """
         try:
-            print(f"[DEBUG] Starting file upload: {file_name} to folder: {parent_folder_id}")
+            logger.info(f"Starting file upload: {file_name} to folder: {parent_folder_id}")
             
             # Create file metadata
             file_metadata = {
                 'name': file_name,
                 'parents': [parent_folder_id]
             }
+            logger.debug(f"File metadata: {file_metadata}")
             
             # Create media content
             fh = io.BytesIO(file_content)
@@ -394,8 +415,10 @@ class GoogleDriveService:
                 chunksize=1024*1024,
                 resumable=True
             )
+            logger.debug("Media upload object created")
             
             # Upload file
+            logger.debug("Starting file upload to Drive...")
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
@@ -403,18 +426,20 @@ class GoogleDriveService:
                 fields='id, name, mimeType, size, webViewLink'
             ).execute()
             
-            print(f"[DEBUG] File uploaded successfully: {file.get('id')}")
+            logger.info(f"File uploaded successfully. File ID: {file.get('id')}")
             
-            return {
+            result = {
                 'id': file.get('id', ''),
                 'name': file.get('name', file_name),
                 'mimeType': file.get('mimeType', ''),
                 'size': file.get('size', 0),
                 'webViewLink': file.get('webViewLink', '')
             }
+            logger.debug(f"Upload result: {result}")
+            return result
             
         except Exception as e:
-            print(f"[DEBUG] Error in upload_file: {str(e)}")
+            logger.error(f"Failed to upload file {file_name}: {str(e)}", exc_info=True)
             raise Exception(f"Failed to upload file: {str(e)}")
 
     def folder_exists(self, folder_name: str, parent_id: Optional[str] = None) -> bool:
@@ -445,11 +470,13 @@ class GoogleDriveService:
     def list_events(self) -> List[Dict]:
         """List all event folders in the root folder"""
         try:
+            logger.info("Listing event folders from root folder")
             query = [
                 f"'{self.root_folder_id}' in parents",
                 "mimeType='application/vnd.google-apps.folder'",
                 "trashed=false"
             ]
+            logger.debug(f"Query parameters: {query}")
 
             results = self.service.files().list(
                 q=" and ".join(query),
@@ -461,9 +488,13 @@ class GoogleDriveService:
                 orderBy='name'
             ).execute()
 
-            return results.get('files', [])
+            events = results.get('files', [])
+            logger.info(f"Found {len(events)} event folders")
+            logger.debug(f"Event folders: {events}")
+            return events
+            
         except Exception as e:
-            print(f"Error listing events: {e}")
+            logger.error(f"Error listing events: {str(e)}", exc_info=True)
             return []
 
     def copy_media_files(self, source_folder_id: str, target_folder_id: str) -> dict:
