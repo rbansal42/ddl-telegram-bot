@@ -34,7 +34,10 @@ load_dotenv(dotenv_path)
 state_storage = StateMemoryStorage()
 services = ServiceContainer()
 bot = TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), threaded=True, state_storage=state_storage)
-bot.set_my_commands(BOT_COMMANDS)  # Only show public commands by default
+
+# Set public commands globally for all users
+bot.delete_my_commands()  # Clear any existing commands
+bot.set_my_commands(BOT_COMMANDS)  # Set public commands globally
 
 # Initialize state manager before registering handlers
 state_manager = UserStateManager()

@@ -3,6 +3,7 @@ import os
 
 # Third-party imports
 from telebot import TeleBot
+from telebot.types import Message, BotCommand, BotCommandScopeChat
 
 # Local application imports
 from src.commands.constants import (
@@ -15,7 +16,6 @@ from src.commands.constants import (
 from src.database.mongo_db import MongoDB
 from src.utils.user_actions import log_action, ActionType
 from src.utils.command_helpers import get_commands_for_role
-from telebot.types import BotCommandScopeChat
 
 def register_basic_handlers(bot: TeleBot, db: MongoDB):
     def is_admin(user_id):
@@ -24,25 +24,19 @@ def register_basic_handlers(bot: TeleBot, db: MongoDB):
         return user_id in admin_ids
 
     @bot.message_handler(commands=[CMD_START])
-    def start(message):
-        try:
-            log_action(
-                ActionType.COMMAND_START,
-                message.from_user.id,
-                metadata={
-                    'chat_id': message.chat.id,
-                    'username': message.from_user.username
-                }
-            )
-            bot.reply_to(message, "👋 Hello! I am your Event Management Bot.\nUse /help to see available commands.")
-        except Exception as e:
-            log_action(
-                ActionType.COMMAND_FAILED,
-                message.from_user.id,
-                error_message=str(e),
-                metadata={'command': 'start'}
-            )
-            bot.reply_to(message, "❌ An error occurred while processing your command.")
+    def start(message: Message):
+        """Handle the /start command"""
+        user_id = message.from_user.id
+        user = db.users.find_one({'user_id': user_id})
+        
+        if user:
+            # Update command menu based on user's role
+            commands = get_commands_for_role(user['role'].lower())
+            bot.set_my_commands(commands, scope=BotCommandScopeChat(user_id))
+            bot.reply_to(message, f"Welcome back! You are registered as a {user['role']}.\nUse /help to see available commands.")
+        else:
+            bot.set_my_commands(get_commands_for_role("public"), scope=BotCommandScopeChat(user_id))
+            bot.reply_to(message, "Welcome! Please use /register to request access to the bot.")
 
     @bot.message_handler(commands=[CMD_HELP])
     def help_command(message):

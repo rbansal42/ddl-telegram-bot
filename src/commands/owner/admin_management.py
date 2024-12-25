@@ -96,88 +96,83 @@ def register_admin_handlers(bot: TeleBot, db: MongoDB):
     def add_admin(message: Message) -> None:
         """Add a new admin user"""
         try:
-            args = message.text.split()
-            if len(args) == 1:  # No user_id provided
-                members_query = {
-                    'registration_status': 'approved',
-                    'role': Role.MEMBER.name.lower()
-                }
-                
-                members = db.users.find(members_query)
-                member_list = list(members)
-                
-                if not member_list:
-                    bot.reply_to(message, "📝 No registered members found to promote.")
-                    return
+            command_args = message.text.split()
+            if len(command_args) != 2:
+                bot.reply_to(message, "❌ Please provide the user ID to promote.\nFormat: /addadmin <user_id>")
+                return
 
-                markup = InlineKeyboardMarkup()
-                for member in member_list:
-                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or 'N/A'
-                    email = member.get('email', 'N/A')
-                    user_id = member.get('user_id')
-                    
-                    markup.add(
-                        InlineKeyboardButton(
-                            f"👤 {full_name} | 📧 {email}",
-                            callback_data=f"promote_{user_id}"
-                        )
-                    )
+            user_id = int(command_args[1])
+            user = db.get_user(user_id)
+            
+            if not user:
+                bot.reply_to(message, "❌ User not found.")
+                return
                 
-                bot.reply_to(message, 
-                    "👥 *Select a member to promote to admin:*",
-                    reply_markup=markup,
-                    parse_mode="Markdown")
-            else:
-                new_admin_id = int(args[1])
-                promote_to_admin(bot, db, message.from_user.id, new_admin_id)
+            if user.role == 'ADMIN':
+                bot.reply_to(message, "❌ User is already an admin.")
+                return
+
+            # Update user role
+            db.update_user_role(user_id, 'ADMIN')
+            
+            # Update their command menu
+            commands = get_commands_for_role('admin')
+            bot.set_my_commands(commands, scope=BotCommandScopeChat(user_id))
+            
+            # Notify the user
+            try:
+                bot.send_message(user_id, "🎉 You have been promoted to admin! Use /adminhelp to see admin commands.")
+            except:
+                pass  # User might have blocked the bot
                 
+            bot.reply_to(message, f"✅ User {user_id} has been promoted to admin.")
+            
+        except ValueError:
+            bot.reply_to(message, "❌ Invalid user ID format.")
         except Exception as e:
-            print(f"❌ Error in add_admin: {e}")
-            log_action(
-                ActionType.COMMAND_FAILED,
-                message.from_user.id,
-                error_message=str(e),
-                metadata={'command': 'addadmin'}
-            )
-            bot.reply_to(message, f"❌ Error adding admin: {e}")
+            bot.reply_to(message, f"❌ An error occurred: {str(e)}")
 
     @bot.message_handler(commands=['removeadmin'])
     @check_admin_or_owner(bot, db)
-    def remove_admin(message: Message) -> None:
+    def remove_admin(message: Message):
         """Remove an admin user"""
-        try:
-            args = message.text.split()
-            if len(args) == 1:  # No user_id provided
-                admins = db.users.find({'role': Role.ADMIN.name.lower()})
-                admin_list = list(admins)
-                
-                if not admin_list:
-                    bot.reply_to(message, "📝 No admins found to demote.")
-                    return
 
-                markup = InlineKeyboardMarkup()
-                for admin in admin_list:
-                    full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip() or 'N/A'
-                    email = admin.get('email', 'N/A')
-                    user_id = admin.get('user_id')
-                    
-                    markup.add(
-                        InlineKeyboardButton(
-                            f"👤 {full_name} | 📧 {email}",
-                            callback_data=f"demote_{user_id}"
-                        )
-                    )
+        try:
+            command_args = message.text.split()
+            if len(command_args) != 2:
+                bot.reply_to(message, "❌ Please provide the user ID to demote.\nFormat: /removeadmin <user_id>")
+                return
+
+            user_id = int(command_args[1])
+            user = db.get_user(user_id)
+            
+            if not user:
+                bot.reply_to(message, "❌ User not found.")
+                return
                 
-                bot.reply_to(message, 
-                    "👥 *Select an admin to demote:*",
-                    reply_markup=markup,
-                    parse_mode="Markdown")
-            else:
-                admin_id = int(args[1])
-                demote_to_member(bot, db, message.from_user.id, admin_id)
+            if user.role != 'ADMIN':
+                bot.reply_to(message, "❌ User is not an admin.")
+                return
+
+            # Update user role
+            db.update_user_role(user_id, 'MEMBER')
+            
+            # Update their command menu
+            commands = get_commands_for_role('member')
+            bot.set_my_commands(commands, scope=BotCommandScopeChat(user_id))
+            
+            # Notify the user
+            try:
+                bot.send_message(user_id, "You have been demoted to member. Your admin privileges have been revoked.")
+            except:
+                pass  # User might have blocked the bot
                 
+            bot.reply_to(message, f"✅ User {user_id} has been demoted to member.")
+            
+        except ValueError:
+            bot.reply_to(message, "❌ Invalid user ID format.")
         except Exception as e:
-            bot.reply_to(message, f"❌ Error removing admin: {e}")
+            bot.reply_to(message, f"❌ An error occurred: {str(e)}")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('promote_'))
     def handle_admin_promotion(call: CallbackQuery) -> None:

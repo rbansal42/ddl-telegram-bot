@@ -3,6 +3,7 @@ import os
 
 # Third-party imports
 from telebot import TeleBot, types
+from telebot.types import Message, BotCommandScopeChat
 
 # Local application imports
 from src.commands import CMD_REGISTER
@@ -215,3 +216,48 @@ def register_registration_handlers(bot: TeleBot, db: MongoDB):
                     f"Use /pending to review registration requests.")
             except Exception as e:
                 print(f"Failed to notify admin {admin_id}: {e}")
+
+    @bot.message_handler(commands=['approve'])
+    def approve_registration(message: Message):
+        """Approve a pending registration request"""
+        if not is_admin(message.from_user.id):
+            bot.reply_to(message, "❌ You don't have permission to use this command.")
+            return
+
+        try:
+            # Extract user ID to approve
+            command_args = message.text.split()
+            if len(command_args) != 2:
+                bot.reply_to(message, "❌ Please provide the user ID to approve.\nFormat: /approve <user_id>")
+                return
+
+            user_id = int(command_args[1])
+            user = db.get_user(user_id)
+            
+            if not user:
+                bot.reply_to(message, "❌ User not found.")
+                return
+                
+            if user.status == 'approved':
+                bot.reply_to(message, "❌ User is already approved.")
+                return
+
+            # Update user status
+            db.update_user_status(user_id, 'approved')
+            
+            # Set appropriate commands for the user based on their role
+            commands = get_commands_for_role(user.role.lower())
+            bot.set_my_commands(commands, scope=BotCommandScopeChat(user_id))
+            
+            # Notify the user
+            try:
+                bot.send_message(user_id, "✅ Your registration has been approved! Use /help to see available commands.")
+            except:
+                pass  # User might have blocked the bot
+                
+            bot.reply_to(message, f"✅ User {user_id} has been approved.")
+            
+        except ValueError:
+            bot.reply_to(message, "❌ Invalid user ID format.")
+        except Exception as e:
+            bot.reply_to(message, f"❌ An error occurred: {str(e)}")
