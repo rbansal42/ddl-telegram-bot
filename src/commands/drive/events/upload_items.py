@@ -202,13 +202,17 @@ class UploadManager:
             self.state_manager.set_state(user_id, state_data)
 
             # Send instructions
-            self.bot.edit_message_text(
+            instructions = (
                 f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
                 "You can now upload files to this event:\n"
                 "• Send any documents, photos, videos, or audio files\n"
                 "• Multiple files can be uploaded\n"
                 "• Session expires in 60 minutes\n\n"
-                f"Press *Done* when finished or *Cancel* to stop uploading{escape_markdown('.')}",
+                "Press *Done* when finished or *Cancel* to stop uploading\\."
+            )
+            
+            self.bot.edit_message_text(
+                instructions,
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="MarkdownV2",
@@ -275,7 +279,7 @@ class UploadManager:
 
         if datetime.now() > user_state.get('upload_expires_at', datetime.now()):
             logger.warning(f"Upload session expired for user {user_id}")
-            self.bot.reply_to(message, "⏰ Upload session expired. Please start a new upload.")
+            self.bot.reply_to(message, "⏰ Upload session expired\\. Please start a new upload\\.")
             self.state_manager.clear_state(user_id)
             self.temp_handler.cleanup_session(user_id)
             return
@@ -285,7 +289,8 @@ class UploadManager:
             logger.info(f"File from user {user_id} processed successfully")
         except Exception as e:
             logger.error(f"Error processing file: {str(e)}", exc_info=True)
-            self.bot.reply_to(message, f"❌ Error processing file: {str(e)}")
+            error_msg = escape_markdown(str(e))
+            self.bot.reply_to(message, f"❌ Error processing file: {error_msg}", parse_mode="MarkdownV2")
 
     def process_uploaded_file(self, message: Message):
         """Process an uploaded file"""
@@ -371,9 +376,10 @@ class UploadManager:
 
         if not pending_uploads:
             self.bot.edit_message_text(
-                "❌ No files to upload.",
+                "❌ No files to upload\\.",
                 call.message.chat.id,
-                call.message.message_id
+                call.message.message_id,
+                parse_mode="MarkdownV2"
             )
             self.state_manager.clear_state(user_id)
             return
@@ -386,9 +392,9 @@ class UploadManager:
 
             # Update status message
             status_text = (
-                f"⏳ *Processing Uploads*\n\n"
+                "⏳ *Processing Uploads*\n\n"
                 f"Preparing to upload {total_files} files to {escape_markdown(folder_name)}\n"
-                f"Please wait..."
+                "Please wait\\.\\.\\."
             )
             self.bot.edit_message_text(
                 status_text,
@@ -403,7 +409,7 @@ class UploadManager:
                 progress_bar = "▓" * int(progress/5) + "░" * (20-int(progress/5))
                 
                 status_text = (
-                    f"⏳ *Uploading Files*\n\n"
+                    "⏳ *Uploading Files*\n\n"
                     f"Progress: `[{progress_bar}]` {progress:.1f}%\n"
                     f"File {index}/{total_files}: `{escape_markdown(file['name'])}`"
                 )
@@ -437,11 +443,11 @@ class UploadManager:
                     'video': '🎥',
                     'audio': '🎵'
                 }.get(file['type'], '📁')
-                summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) - {escape_markdown(file['size'])}\n"
+                summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) \\- {escape_markdown(file['size'])}\n"
             summary += f"\n*Total Size:* {escape_markdown(total_size)}"
 
             self.bot.edit_message_text(
-                f"✅ *Upload Complete!*\n\n{summary}",
+                f"✅ *Upload Complete\\!*\n\n{summary}",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="MarkdownV2",
@@ -465,10 +471,12 @@ class UploadManager:
 
         except Exception as e:
             logger.error(f"Error processing uploads: {str(e)}", exc_info=True)
+            error_msg = escape_markdown(str(e))
             self.bot.edit_message_text(
-                f"❌ Error uploading files: {str(e)}",
+                f"❌ Error uploading files: {error_msg}",
                 call.message.chat.id,
-                call.message.message_id
+                call.message.message_id,
+                parse_mode="MarkdownV2"
             )
             log_action(
                 ActionType.UPLOAD_FAILED,
