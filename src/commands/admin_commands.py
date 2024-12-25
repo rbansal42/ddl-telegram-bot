@@ -55,12 +55,11 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
                                f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n")
                 return response
                 
- 
             # Send first page
             bot.reply_to(message, 
                 create_member_page(1), 
                 parse_mode="Markdown",
-                reply_markup=create_navigation_markup(1))
+                reply_markup=create_navigation_markup(1, total_pages, 'members'))
             
         except Exception as e:
             bot.reply_to(message, f"❌ Error listing members: {e}")
@@ -99,7 +98,7 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown",
-                reply_markup=create_navigation_markup(page)
+                reply_markup=create_navigation_markup(page, total_pages, 'members')
             )
             bot.answer_callback_query(call.id)
             
