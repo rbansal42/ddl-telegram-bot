@@ -1,5 +1,6 @@
 # Standard library imports
 import os
+import logging
 
 # Third-party imports
 from telebot import TeleBot, types
@@ -20,11 +21,15 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
     def list_members(message):
         """List all registered members"""
         try:
+            logging.debug("[listmembers] Starting list_members function")
+            logging.debug(f"[listmembers] User ID: {message.from_user.id}")
+            
             members = db.users.find({
                 'registration_status': 'approved',
                 'role': Role.MEMBER.name.lower()
             })
             member_list = list(members)
+            logging.debug(f"[listmembers] Found {len(member_list)} members")
             
             log_action(
                 ActionType.ADMIN_COMMAND,
@@ -36,6 +41,7 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
             )
             
             if not member_list:
+                logging.debug("[listmembers] No members found")
                 bot.reply_to(message, "📝 No registered members found.")
                 return
                 
@@ -43,10 +49,13 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
             page_size = 10
             total_members = len(member_list)
             total_pages = (total_members + page_size - 1) // page_size
+            logging.debug(f"[listmembers] Pagination: total_members={total_members}, page_size={page_size}, total_pages={total_pages}")
             
             def create_member_page(page):
+                logging.debug(f"[listmembers] Creating page {page} of {total_pages}")
                 start_idx = (page - 1) * page_size
                 end_idx = min(start_idx + page_size, total_members)
+                logging.debug(f"[listmembers] Page indices: start={start_idx}, end={end_idx}")
                 
                 response = f"👥 *Members List (Page {page}/{total_pages}):*\n\n"
                 for member in member_list[start_idx:end_idx]:
@@ -56,35 +65,54 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
                 return response
                 
             # Send first page
+            logging.debug("[listmembers] Creating navigation markup")
+            markup = create_navigation_markup(1, total_pages, 'members')
+            logging.debug("[listmembers] Navigation markup created successfully")
+            
+            response_text = create_member_page(1)
+            logging.debug("[listmembers] First page content created")
+            
             bot.reply_to(message, 
-                create_member_page(1), 
+                response_text, 
                 parse_mode="Markdown",
-                reply_markup=create_navigation_markup(1, total_pages, 'members'))
+                reply_markup=markup)
+            logging.debug("[listmembers] Message sent successfully")
             
         except Exception as e:
+            logging.error(f"[listmembers] Error in list_members: {str(e)}", exc_info=True)
             bot.reply_to(message, f"❌ Error listing members: {e}")
             
     @bot.callback_query_handler(func=lambda call: call.data.startswith('members_'))
     def handle_members_navigation(call):
         """Handle member list navigation"""
         try:
+            logging.debug("[members_nav] Starting navigation handler")
+            logging.debug(f"[members_nav] Callback data: {call.data}")
+            
             if not check_admin_or_owner(bot, db)(lambda: True)(call.message):
+                logging.debug("[members_nav] User not authorized")
                 return
                 
             page = int(call.data.split('_')[1])
+            logging.debug(f"[members_nav] Requested page: {page}")
+            
             members = db.users.find({
                 'registration_status': 'approved',
                 'role': Role.MEMBER.name.lower()
             })
             member_list = list(members)
+            logging.debug(f"[members_nav] Found {len(member_list)} members")
             
             page_size = 10
             total_members = len(member_list)
             total_pages = (total_members + page_size - 1) // page_size
+            logging.debug(f"[members_nav] Pagination: total_members={total_members}, page_size={page_size}, total_pages={total_pages}")
             
             def create_member_page(page):
+                logging.debug(f"[members_nav] Creating page {page} of {total_pages}")
                 start_idx = (page - 1) * page_size
                 end_idx = min(start_idx + page_size, total_members)
+                logging.debug(f"[members_nav] Page indices: start={start_idx}, end={end_idx}")
                 
                 response = f"👥 *Members List (Page {page}/{total_pages}):*\n\n"
                 for member in member_list[start_idx:end_idx]:
@@ -92,17 +120,28 @@ def register_member_management_handlers(bot: TeleBot, db: MongoDB):
                                f"  Username: @{member.get('username', 'N/A')}\n"
                                f"  Name: {member.get('first_name', '')} {member.get('last_name', '')}\n\n")
                 return response
+            
+            logging.debug("[members_nav] Creating navigation markup")
+            markup = create_navigation_markup(page, total_pages, 'members')
+            logging.debug("[members_nav] Navigation markup created successfully")
+            
+            response_text = create_member_page(page)
+            logging.debug("[members_nav] Page content created")
                 
             bot.edit_message_text(
-                create_member_page(page),
+                response_text,
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown",
-                reply_markup=create_navigation_markup(page, total_pages, 'members')
+                reply_markup=markup
             )
+            logging.debug("[members_nav] Message updated successfully")
+            
             bot.answer_callback_query(call.id)
+            logging.debug("[members_nav] Callback query answered")
             
         except Exception as e:
+            logging.error(f"[members_nav] Error in navigation handler: {str(e)}", exc_info=True)
             bot.answer_callback_query(call.id, f"Error: {str(e)}")
 
     @bot.message_handler(commands=['adminhelp'])
