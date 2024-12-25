@@ -8,7 +8,7 @@ from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 # Local application imports
 from src.database.mongo_db import MongoDB
 from src.middleware.auth import check_event_permission
-from src.services.google.drive_service import GoogleDriveService
+from src.services.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.message_helpers import escape_markdown
 from src.utils.state_management import UserStateManager
@@ -257,7 +257,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
                 
                 # Format response
                 response = (
-                    f"✅ Event folder created successfully\\!\n\n"
+                    f"�� Event folder created successfully\\!\n\n"
                     f"*Event:* {escaped_name}\n"
                     f"*Link:* {escaped_url}"
                 )

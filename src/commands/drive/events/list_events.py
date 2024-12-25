@@ -9,7 +9,7 @@ from telebot.types import Message, CallbackQuery
 # Local application imports
 from src.database.mongo_db import MongoDB
 from src.middleware.auth import check_admin_or_owner
-from src.services.google.drive_service import GoogleDriveService
+from src.services.drive_service import GoogleDriveService
 from src.utils.pagination import paginate_items
 from src.utils.markup_helpers import create_navigation_markup
 from src.utils.message_helpers import split_and_send_messages

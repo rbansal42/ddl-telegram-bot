@@ -14,6 +14,7 @@ CMD_REGISTER = 'register'
 CMD_NEWEVENTFOLDER = 'neweventfolder'
 CMD_LISTEVENTS = 'listevents'
 CMD_GETLINK = 'getlink'
+CMD_COPYMEDIA = 'copymedia'
 CMD_CAT = 'cat'
 CMD_DOG = 'dog'
 CMD_SPACE = 'space'
@@ -47,7 +48,8 @@ PUBLIC_COMMANDS = [
 # Member commands
 MEMBER_COMMANDS = PUBLIC_COMMANDS + [
     BotCommand(CMD_LISTEVENTS, "List all events"),
-    BotCommand(CMD_GETLINK, "Get event folder link")
+    BotCommand(CMD_GETLINK, "Get event folder link"),
+    BotCommand(CMD_COPYMEDIA, "Copy media files from a folder to an event")
 ]
 
 # Admin commands

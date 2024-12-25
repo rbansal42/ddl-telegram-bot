@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from src.services.google.drive_service import GoogleDriveService, DriveAccessLevel
+from src.services.drive_service import GoogleDriveService, DriveAccessLevel
 import os
 
 class TestGoogleDriveService(unittest.TestCase):

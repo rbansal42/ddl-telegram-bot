@@ -21,11 +21,12 @@ from src.commands.member_commands import register_member_handlers
 from src.commands.owner.admin_management import register_admin_handlers
 from src.commands.owner_commands import register_owner_handlers
 from src.commands.registration_commands import register_registration_handlers
+from src.commands.drive.events.upload_items import register_upload_handlers
+from src.commands.drive.events.add_event import register_event_handlers
+from src.commands.drive.media_copy import register_media_copy_handlers
 from src.services.service_container import ServiceContainer
 from src.utils.command_helpers import get_commands_for_role
 from src.utils.state_management import UserStateManager
-from src.commands.drive.events.upload_items import register_upload_handlers
-from src.commands.drive.events.add_event import register_event_handlers
 
 # Initialize services and bot
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -55,6 +56,7 @@ event_handlers = register_event_handlers(bot, services.db, services.drive_servic
 upload_handlers = register_upload_handlers(bot, services.db, services.drive_service, state_manager)
 register_drive_handlers(bot, services.db, services.drive_service)
 register_admin_handlers(bot, services.db)
+register_media_copy_handlers(bot, services.db, services.drive_service, state_manager)
 
 # Signal handler for graceful shutdown
 def signal_handler(signum, frame):

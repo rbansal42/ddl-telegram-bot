@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from src.database.mongo_db import MongoDB
-from src.services.google.drive_service import GoogleDriveService
+from src.services.drive_service import GoogleDriveService
 from src.utils.message_helpers import escape_markdown
 from src.utils.user_actions import log_action, ActionType
 from src.utils.state_management import UserStateManager

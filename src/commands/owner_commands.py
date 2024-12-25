@@ -9,7 +9,7 @@ from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from src.database.mongo_db import MongoDB
 from src.database.roles import Role, Permissions
 from src.middleware.auth import check_admin_or_owner, check_event_permission
-from src.services.google.drive_service import GoogleDriveService
+from src.services.drive_service import GoogleDriveService
 from src.utils.command_helpers import get_commands_for_role
 from src.utils.file_helpers import format_file_size
 from src.utils.notifications import notify_user, NotificationType

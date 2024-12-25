@@ -9,7 +9,7 @@ from telebot.types import Message
 # Local application imports
 from src.database.mongo_db import MongoDB
 from src.middleware.auth import check_admin_or_owner
-from src.services.google.drive_service import GoogleDriveService
+from src.services.drive_service import GoogleDriveService
 from src.utils.user_actions import log_action, ActionType
 from src.utils.state_management import UserStateManager
 # Import handlers from drive modules
