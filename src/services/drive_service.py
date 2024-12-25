@@ -670,23 +670,39 @@ class GoogleDriveService:
             }
 
     def get_folder_size(self, folder_id: str) -> int:
-        """Get total size of all files in a folder in bytes"""
+        """Get total size of all files in a folder in bytes (including subfolders)"""
         try:
-            # Query for all files in the folder
-            query = f"'{folder_id}' in parents and trashed = false"
-            files = self.service.files().list(
-                q=query,
-                fields="files(size)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
+            def get_size_recursive(folder_id: str, page_token=None) -> int:
+                total_size = 0
+                
+                # Query for all files in the folder
+                query = f"'{folder_id}' in parents and trashed = false"
+                results = self.service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id, mimeType, size)",
+                    pageToken=page_token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1000
+                ).execute()
 
-            # Sum up the sizes of all files
-            total_size = 0
-            for file in files.get('files', []):
-                if 'size' in file:  # Some items like folders don't have size
-                    total_size += int(file['size'])
+                # Process files in current page
+                for file in results.get('files', []):
+                    if file['mimeType'] == 'application/vnd.google-apps.folder':
+                        # Recursively get size of subfolder
+                        total_size += get_size_recursive(file['id'])
+                    elif 'size' in file:  # Some items like folders don't have size
+                        total_size += int(file['size'])
 
+                # Get next page if available
+                if 'nextPageToken' in results:
+                    total_size += get_size_recursive(folder_id, results['nextPageToken'])
+
+                return total_size
+
+            # Start recursive size calculation
+            total_size = get_size_recursive(folder_id)
+            logger.info(f"Total folder size calculated: {total_size} bytes")
             return total_size
 
         except Exception as e:
