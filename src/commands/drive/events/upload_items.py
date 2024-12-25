@@ -280,7 +280,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             temp_handler.cleanup_session(user_id)
             state_manager.clear_state(user_id)
             bot.edit_message_text(
-                "❌ Upload session cancelled.",
+                "��� Upload session cancelled.",
                 call.message.chat.id,
                 call.message.message_id
             )
@@ -294,10 +294,12 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         try:
             is_new_command = isinstance(message, Message)
             user_id = message.from_user.id if is_new_command else message.from_user.id
+            logger.info(f"Processing upload to event command from user {user_id}")
 
-            # Get all events from database
-            events = db.get_events()
+            # Get available events from drive service
+            events = drive_service.list_events()
             if not events:
+                logger.warning("No events found")
                 error_text = "❌ No events found. Please create an event first."
                 if is_new_command:
                     bot.reply_to(message, error_text)
@@ -305,12 +307,17 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
                     bot.edit_message_text(error_text, message.message.chat.id, message.message.message_id)
                 return
 
+            # Sort events by name in reverse order (latest first)
+            events = sorted(events, key=lambda x: x['name'], reverse=True)
+            
             # Calculate pagination
             total_pages = (len(events) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
             page = max(0, min(page, total_pages - 1))
             start_idx = page * ITEMS_PER_PAGE
             end_idx = start_idx + ITEMS_PER_PAGE
             current_events = events[start_idx:end_idx]
+            
+            logger.debug(f"Showing events {start_idx+1}-{min(end_idx, len(events))} of {len(events)}")
 
             # Create event selection markup
             markup = InlineKeyboardMarkup(row_width=1)
@@ -318,6 +325,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             # Add event buttons
             for event in current_events:
                 event_name = event['name']
+                logger.debug(f"Adding event to markup: {event_name} (ID: {event['id']})")
                 markup.add(InlineKeyboardButton(
                     event_name,
                     callback_data=f"upload_event_{event['id']}"
@@ -384,7 +392,8 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
         """Handle event selection for upload"""
         try:
             event_id = call.data.split('_')[2]
-            event = db.get_event(event_id)
+            events = drive_service.list_events()
+            event = next((e for e in events if e['id'] == event_id), None)
             
             if not event:
                 bot.answer_callback_query(call.id, "❌ Event not found")
@@ -393,7 +402,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             # Set up upload session state
             state_data = {
                 'state': 'upload_mode',
-                'folder_id': event['folder_id'],
+                'folder_id': event['id'],
                 'folder_name': event['name'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60)
             }
@@ -420,7 +429,7 @@ def register_upload_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDri
             bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
 
     # Register the command handler
-    bot.register_message_handler(handle_upload_to_event, commands=[CMD_UPLOAD_TO_EVENT])
+    bot.register_message_handler(handle_upload_to_event, commands=[CMD_UPLOAD_TO_EVENT, 'upload_media'])
 
     # Return all handlers
     return {
