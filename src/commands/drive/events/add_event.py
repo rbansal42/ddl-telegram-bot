@@ -17,7 +17,7 @@ def register_event_handlers(bot: TeleBot, db: MongoDB, drive_service: GoogleDriv
     """Register event-related command handlers"""
     print("[DEBUG] Registering event handlers...")
     
-    @bot.message_handler(commands=['addevent'])
+    @bot.message_handler(commands=['addevent', 'newevent'])
     @check_event_permission(bot, db)
     def add_event(message):
         print(f"[DEBUG] Add event command received from user {message.from_user.id}")
