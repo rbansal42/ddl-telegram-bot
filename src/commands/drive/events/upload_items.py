@@ -13,7 +13,25 @@ from typing import Dict, List
 import time
 import logging
 
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create console handler with a higher log level
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# Add the handlers to logger
+logger.addHandler(console_handler)
+
+# Disable other loggers
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('telebot').setLevel(logging.WARNING)
+
 CMD_UPLOAD_TO_EVENT = 'upload_to_event'
 
 class UploadStates(StatesGroup):
@@ -32,6 +50,8 @@ class UploadManager:
 
     def register_handlers(self):
         """Register all handlers"""
+        logger.info("Registering upload handlers")
+        
         # Command handler
         self.bot.message_handler(commands=[CMD_UPLOAD_TO_EVENT])(self.handle_upload_to_event)
         
@@ -41,8 +61,17 @@ class UploadManager:
         self.bot.callback_query_handler(func=lambda call: call.data == 'status_info')(self.handle_status_info)
         self.bot.callback_query_handler(func=lambda call: call.data in ['upload_done', 'upload_cancel'])(self.handle_upload_action)
         
-        # File upload handler
-        self.bot.message_handler(content_types=['document', 'photo', 'video', 'audio'])(self.handle_file_upload)
+        # File upload handler - this needs to be registered globally
+        self.bot.message_handler(
+            func=lambda message: (
+                message.content_type in ['document', 'photo', 'video', 'audio'] and
+                isinstance(self.state_manager.get_state(message.from_user.id), dict) and
+                self.state_manager.get_state(message.from_user.id).get('state') == 'upload_mode'
+            ),
+            content_types=['document', 'photo', 'video', 'audio']
+        )(self.handle_file_upload)
+        
+        logger.info("Upload handlers registered successfully")
 
     def create_status_markup(self, user_id: int) -> InlineKeyboardMarkup:
         """Create status message markup"""
@@ -179,7 +208,7 @@ class UploadManager:
                 "• Send any documents, photos, videos, or audio files\n"
                 "• Multiple files can be uploaded\n"
                 "• Session expires in 60 minutes\n\n"
-                "Press *Done* when finished or *Cancel* to stop uploading.",
+                f"Press *Done* when finished or *Cancel* to stop uploading{escape_markdown('.')}",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="MarkdownV2",
@@ -238,7 +267,9 @@ class UploadManager:
         logger.info(f"File upload from user {user_id}")
         
         user_state = self.state_manager.get_state(user_id)
-        if not user_state or not user_state.get('upload_mode'):
+        logger.debug(f"Current user state: {user_state}")
+        
+        if not user_state or not user_state.get('state') == 'upload_mode':
             logger.info(f"User {user_id} not in upload mode")
             return
 
@@ -251,6 +282,7 @@ class UploadManager:
 
         try:
             self.process_uploaded_file(message)
+            logger.info(f"File from user {user_id} processed successfully")
         except Exception as e:
             logger.error(f"Error processing file: {str(e)}", exc_info=True)
             self.bot.reply_to(message, f"❌ Error processing file: {str(e)}")
@@ -259,57 +291,77 @@ class UploadManager:
         """Process an uploaded file"""
         user_id = message.from_user.id
         file_type, file_name, file_size = get_file_info(message)
-        logger.info(f"Processing file: {file_name}")
+        logger.info(f"Processing file: {file_name} ({file_type})")
 
-        # Get file info
-        if message.document:
-            file_info = self.bot.get_file(message.document.file_id)
-            size_bytes = message.document.file_size
-        elif message.photo:
-            file_info = self.bot.get_file(message.photo[-1].file_id)
-            size_bytes = file_info.file_size
-        elif message.video:
-            file_info = self.bot.get_file(message.video.file_id)
-            size_bytes = message.video.file_size
-        elif message.audio:
-            file_info = self.bot.get_file(message.audio.file_id)
-            size_bytes = message.audio.file_size
+        try:
+            # Get file info
+            if message.document:
+                file_info = self.bot.get_file(message.document.file_id)
+                size_bytes = message.document.file_size
+                logger.debug("Processing document")
+            elif message.photo:
+                file_info = self.bot.get_file(message.photo[-1].file_id)
+                size_bytes = file_info.file_size
+                logger.debug("Processing photo")
+            elif message.video:
+                file_info = self.bot.get_file(message.video.file_id)
+                size_bytes = message.video.file_size
+                logger.debug("Processing video")
+            elif message.audio:
+                file_info = self.bot.get_file(message.audio.file_id)
+                size_bytes = message.audio.file_size
+                logger.debug("Processing audio")
+            else:
+                logger.error("Unsupported file type")
+                raise ValueError("Unsupported file type")
 
-        # Save file
-        temp_path = self.temp_handler.save_telegram_file(
-            self.bot,
-            file_info,
-            file_name,
-            user_id
-        )
-
-        # Add to pending uploads
-        self.state_manager.add_pending_upload(user_id, {
-            'name': file_name,
-            'size': file_size,
-            'size_bytes': size_bytes,
-            'type': file_type,
-            'path': temp_path
-        })
-
-        # Update status message
-        user_state = self.state_manager.get_state(user_id)
-        if not user_state.get('status_message_id'):
-            status_msg = self.bot.send_message(
-                message.chat.id,
-                "📤 *Upload Session Active*\n"
-                "Send files to upload or press Done when finished.",
-                parse_mode="Markdown",
-                reply_markup=self.create_status_markup(user_id)
+            # Save file
+            logger.debug(f"Saving file to temporary storage: {file_name}")
+            temp_path = self.temp_handler.save_telegram_file(
+                self.bot,
+                file_info,
+                file_name,
+                user_id
             )
-            user_state['status_message_id'] = status_msg.message_id
-            self.state_manager.set_state(user_id, user_state)
-        else:
-            self.bot.edit_message_reply_markup(
-                message.chat.id,
-                user_state['status_message_id'],
-                reply_markup=self.create_status_markup(user_id)
-            )
+            logger.info(f"File saved to: {temp_path}")
+
+            # Add to pending uploads
+            logger.debug("Adding file to pending uploads")
+            self.state_manager.add_pending_upload(user_id, {
+                'name': file_name,
+                'size': file_size,
+                'size_bytes': size_bytes,
+                'type': file_type,
+                'path': temp_path
+            })
+
+            # Update status message
+            user_state = self.state_manager.get_state(user_id)
+            if not user_state.get('status_message_id'):
+                logger.debug("Creating new status message")
+                status_msg = self.bot.send_message(
+                    message.chat.id,
+                    "📤 *Upload Session Active*\n"
+                    "Send files to upload or press Done when finished.",
+                    parse_mode="Markdown",
+                    reply_markup=self.create_status_markup(user_id)
+                )
+                user_state['status_message_id'] = status_msg.message_id
+                self.state_manager.set_state(user_id, user_state)
+                logger.debug(f"Status message created with ID: {status_msg.message_id}")
+            else:
+                logger.debug("Updating existing status message")
+                self.bot.edit_message_reply_markup(
+                    message.chat.id,
+                    user_state['status_message_id'],
+                    reply_markup=self.create_status_markup(user_id)
+                )
+
+            logger.info(f"File {file_name} processed successfully")
+
+        except Exception as e:
+            logger.error(f"Error in process_uploaded_file: {str(e)}", exc_info=True)
+            raise
 
     def process_uploads(self, call: CallbackQuery):
         """Process all pending uploads"""
