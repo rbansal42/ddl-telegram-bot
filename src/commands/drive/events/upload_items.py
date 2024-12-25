@@ -130,9 +130,14 @@ class UploadManager:
             
             # Add event buttons
             for event in current_events:
+                # Preserve exact event ID including underscore
+                event_id = event['id']  # Use exact ID without modification
+                logger.debug(f"Creating button for event: {event['name']} (ID: {event_id})")
+                callback_data = f"upload_event_{event_id}"
+                logger.debug(f"Callback data: {callback_data}")
                 markup.add(InlineKeyboardButton(
                     event['name'],
-                    callback_data=f"upload_event_{event['id']}"
+                    callback_data=callback_data
                 ))
 
             # Add navigation buttons
@@ -149,7 +154,7 @@ class UploadManager:
 
             # Create message text
             text = (
-                "��� *Select Event to Upload Media*\n\n"
+                "📤 *Select Event to Upload Media*\n\n"
                 f"{escape_markdown('Choose an event to upload media files to:')}\n\n"
                 f"\\(Showing {start_idx+1}\\-{min(end_idx, len(events))} of {len(events)} events\\)"
             )
@@ -185,12 +190,18 @@ class UploadManager:
             
             # Get event details
             events = self.drive_service.list_events()
+            logger.debug(f"Retrieved {len(events)} events from drive service")
+            
+            # Find event by ID (exact match)
             event = next((e for e in events if e['id'] == event_id), None)
             
             if not event:
-                logger.warning(f"Event {event_id} not found")
+                logger.warning(f"Event {event_id} not found in events list")
+                logger.debug("Available event IDs: " + ", ".join(e['id'] for e in events))
                 self.bot.answer_callback_query(call.id, "❌ Event not found")
                 return
+
+            logger.info(f"Found event: {event['name']} (ID: {event['id']})")
 
             # Set upload state
             state_data = {
@@ -198,8 +209,8 @@ class UploadManager:
                 'folder_id': event['id'],
                 'folder_name': event['name'],
                 'upload_expires_at': datetime.now() + timedelta(minutes=60),
-                'status_message_id': call.message.message_id,  # Store the message ID for updates
-                'chat_id': call.message.chat.id  # Store the chat ID for updates
+                'message_id': call.message.message_id,  # Store message ID for updating later
+                'chat_id': call.message.chat.id  # Store chat ID for updating later
             }
             logger.info(f"Setting state for user {user_id}: {state_data}")
             self.state_manager.set_state(user_id, state_data)
@@ -207,11 +218,10 @@ class UploadManager:
             # Send instructions
             instructions = (
                 f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
-                f"{escape_markdown('Send files to upload:')}\n"
-                f"{escape_markdown('• Documents, photos, videos, or audio files')}\n"
+                f"{escape_markdown('You can now upload files to this event:')}\n"
+                f"{escape_markdown('• Send any documents, photos, videos, or audio files')}\n"
                 f"{escape_markdown('• Multiple files can be uploaded')}\n"
                 f"{escape_markdown('• Session expires in 60 minutes')}\n\n"
-                f"{escape_markdown('No files uploaded yet.')}\n\n"
                 f"{escape_markdown('Press')} *Done* {escape_markdown('when finished or')} *Cancel* {escape_markdown('to stop uploading')}\\."
             )
             
@@ -346,46 +356,28 @@ class UploadManager:
                 'path': temp_path
             })
 
-            # Update status message
+            # Update the original message with status
             user_state = self.state_manager.get_state(user_id)
-            if user_state.get('status_message_id'):
-                logger.debug("Updating status message")
-                file_count, total_size = self.state_manager.get_upload_stats(user_id)
-                
-                status_text = (
-                    f"📤 *Upload Files to {escape_markdown(user_state['folder_name'])}*\n\n"
-                    f"{escape_markdown('Send files to upload:')}\n"
-                    f"{escape_markdown('• Documents, photos, videos, or audio files')}\n"
-                    f"{escape_markdown('• Multiple files can be uploaded')}\n"
-                    f"{escape_markdown('• Session expires in 60 minutes')}\n\n"
-                    f"{escape_markdown(f'Files received: {file_count} ({format_file_size(total_size)})')}\n"
-                    f"{escape_markdown('Latest:')} `{escape_markdown(file_name)}`\n\n"
-                    f"{escape_markdown('Press')} *Done* {escape_markdown('when finished or')} *Cancel* {escape_markdown('to stop uploading')}\\."
-                )
-                
-                self.bot.edit_message_text(
-                    status_text,
-                    user_state['chat_id'],
-                    user_state['status_message_id'],
-                    parse_mode="MarkdownV2",
-                    reply_markup=self.create_status_markup(user_id)
-                )
-            else:
-                logger.warning("No status message ID found in state")
+            file_count, total_size = self.state_manager.get_upload_stats(user_id)
+            
+            status_text = (
+                f"📤 *Upload Files to {escape_markdown(user_state['folder_name'])}*\n\n"
+                f"{escape_markdown('Files received:')}\n"
+                f"`{escape_markdown(f'{file_count} files')} ({escape_markdown(format_file_size(total_size))})`\n\n"
+                f"{escape_markdown('• Send more files, or')}\n"
+                f"{escape_markdown('• Press')} *Done* {escape_markdown('when finished, or')}\n"
+                f"{escape_markdown('• Press')} *Cancel* {escape_markdown('to stop uploading')}"
+            )
+            
+            self.bot.edit_message_text(
+                status_text,
+                user_state['chat_id'],
+                user_state['message_id'],
+                parse_mode="MarkdownV2",
+                reply_markup=self.create_status_markup(user_id)
+            )
 
             logger.info(f"File {file_name} processed successfully")
-
-            # Send a quick confirmation that disappears after 3 seconds
-            confirm_msg = self.bot.reply_to(
-                message,
-                f"✅ {escape_markdown(file_name)} {escape_markdown('received')}",
-                parse_mode="MarkdownV2"
-            )
-            # Delete the confirmation message after 3 seconds
-            time.sleep(3)
-            self.bot.delete_message(confirm_msg.chat.id, confirm_msg.message_id)
-            # Delete the original file message to keep the chat clean
-            self.bot.delete_message(message.chat.id, message.message_id)
 
         except Exception as e:
             logger.error(f"Error in process_uploaded_file: {str(e)}", exc_info=True)
