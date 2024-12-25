@@ -99,7 +99,7 @@ class UploadManager:
             events = self.drive_service.list_events()
             if not events:
                 logger.warning("No events found")
-                self.bot.reply_to(message, "❌ No events found. Please create an event first.")
+                self.bot.reply_to(message, "❌ No events found\\. Please create an event first\\.", parse_mode="MarkdownV2")
                 return
 
             # Sort events by name (newest first)
@@ -108,7 +108,8 @@ class UploadManager:
 
         except Exception as e:
             logger.error(f"Error in handle_upload_to_event: {str(e)}", exc_info=True)
-            self.bot.reply_to(message, f"❌ Error: {str(e)}")
+            error_msg = escape_markdown(str(e))
+            self.bot.reply_to(message, f"❌ Error: {error_msg}", parse_mode="MarkdownV2")
 
     def show_event_list(self, message: Message | CallbackQuery, events: List[Dict], page: int = 0):
         """Show paginated list of events"""
@@ -149,7 +150,7 @@ class UploadManager:
             # Create message text
             text = (
                 "📤 *Select Event to Upload Media*\n\n"
-                "Choose an event to upload media files to:\n\n"
+                f"{escape_markdown('Choose an event to upload media files to:')}\n\n"
                 f"\\(Showing {start_idx+1}\\-{min(end_idx, len(events))} of {len(events)} events\\)"
             )
 
@@ -169,9 +170,9 @@ class UploadManager:
             logger.error(f"Error showing event list: {str(e)}", exc_info=True)
             error_msg = escape_markdown(str(e))
             if is_new_message:
-                self.bot.reply_to(message, error_msg, parse_mode="MarkdownV2")
+                self.bot.reply_to(message, f"❌ Error: {error_msg}", parse_mode="MarkdownV2")
             else:
-                self.bot.edit_message_text(error_msg, chat_id, message_id, parse_mode="MarkdownV2")
+                self.bot.edit_message_text(f"❌ Error: {error_msg}", chat_id, message_id, parse_mode="MarkdownV2")
 
     def handle_event_selection(self, call: CallbackQuery):
         """Handle event selection"""
@@ -204,11 +205,11 @@ class UploadManager:
             # Send instructions
             instructions = (
                 f"📤 *Upload Files to {escape_markdown(event['name'])}*\n\n"
-                "You can now upload files to this event:\n"
-                "• Send any documents, photos, videos, or audio files\n"
-                "• Multiple files can be uploaded\n"
-                "• Session expires in 60 minutes\n\n"
-                "Press *Done* when finished or *Cancel* to stop uploading\\."
+                f"{escape_markdown('You can now upload files to this event:')}\n"
+                f"{escape_markdown('• Send any documents, photos, videos, or audio files')}\n"
+                f"{escape_markdown('• Multiple files can be uploaded')}\n"
+                f"{escape_markdown('• Session expires in 60 minutes')}\n\n"
+                f"{escape_markdown('Press')} *Done* {escape_markdown('when finished or')} *Cancel* {escape_markdown('to stop uploading')}\\."
             )
             
             self.bot.edit_message_text(
@@ -224,7 +225,8 @@ class UploadManager:
 
         except Exception as e:
             logger.error(f"Error in event selection: {str(e)}", exc_info=True)
-            self.bot.answer_callback_query(call.id, f"❌ Error: {str(e)}")
+            error_msg = escape_markdown(str(e))
+            self.bot.answer_callback_query(call.id, f"❌ Error: {error_msg}")
 
     def handle_upload_pagination(self, call: CallbackQuery):
         """Handle pagination for event list"""
@@ -243,7 +245,7 @@ class UploadManager:
         logger.info(f"Status info requested by user {call.from_user.id}")
         self.bot.answer_callback_query(
             call.id,
-            "These files will be uploaded when you press Done"
+            escape_markdown("These files will be uploaded when you press Done")
         )
 
     def handle_upload_action(self, call: CallbackQuery):
@@ -256,9 +258,10 @@ class UploadManager:
             self.temp_handler.cleanup_session(user_id)
             self.state_manager.clear_state(user_id)
             self.bot.edit_message_text(
-                "❌ Upload cancelled.",
+                "❌ Upload cancelled\\.",
                 call.message.chat.id,
-                call.message.message_id
+                call.message.message_id,
+                parse_mode="MarkdownV2"
             )
             return
 
@@ -346,9 +349,9 @@ class UploadManager:
                 logger.debug("Creating new status message")
                 status_msg = self.bot.send_message(
                     message.chat.id,
-                    "📤 *Upload Session Active*\n"
-                    "Send files to upload or press Done when finished.",
-                    parse_mode="Markdown",
+                    "📤 *Upload Session Active*\n\n"
+                    f"{escape_markdown('Send files to upload or press Done when finished.')}",
+                    parse_mode="MarkdownV2",
                     reply_markup=self.create_status_markup(user_id)
                 )
                 user_state['status_message_id'] = status_msg.message_id
@@ -393,8 +396,8 @@ class UploadManager:
             # Update status message
             status_text = (
                 "⏳ *Processing Uploads*\n\n"
-                f"Preparing to upload {total_files} files to {escape_markdown(folder_name)}\n"
-                "Please wait\\.\\.\\."
+                f"{escape_markdown(f'Preparing to upload {total_files} files to')} {escape_markdown(folder_name)}\n"
+                f"{escape_markdown('Please wait')}\\.\\.\\."
             )
             self.bot.edit_message_text(
                 status_text,
@@ -410,8 +413,8 @@ class UploadManager:
                 
                 status_text = (
                     "⏳ *Uploading Files*\n\n"
-                    f"Progress: `\\[{progress_bar}\\]` {progress:.1f}\\%\n"
-                    f"File {index}/{total_files}: `{escape_markdown(file['name'])}`"
+                    f"{escape_markdown('Progress:')} `\\[{progress_bar}\\]` {escape_markdown(f'{progress:.1f}%')}\n"
+                    f"{escape_markdown(f'File {index}/{total_files}:')} `{escape_markdown(file['name'])}`"
                 )
                 
                 self.bot.edit_message_text(
