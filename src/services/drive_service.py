@@ -385,29 +385,117 @@ class GoogleDriveService:
             logger.error(f"Failed to set folder permissions: {str(e)}", exc_info=True)
             raise Exception(f"Failed to set folder permissions: {str(e)}")
 
-    def get_folder_size(self, folder_id: str) -> int:
-        """Get total size of all files in a folder in bytes"""
+    def upload_file(self, file_content: bytes, file_name: str, parent_folder_id: str) -> dict:
+        """
+        Upload a file to Google Drive using Google Drive API directly
+        
+        Args:
+            file_content: The file content in bytes
+            file_name: Name of the file
+            parent_folder_id: ID of the parent folder
+            
+        Returns:
+            dict: The uploaded file's metadata
+        """
         try:
-            # Query for all files in the folder
-            query = f"'{folder_id}' in parents and trashed = false"
-            files = self.service.files().list(
-                q=query,
-                fields="files(size)",
+            logger.info(f"Starting file upload: {file_name} to folder: {parent_folder_id}")
+            
+            # Create file metadata
+            file_metadata = {
+                'name': file_name,
+                'parents': [parent_folder_id]
+            }
+            logger.debug(f"File metadata: {file_metadata}")
+            
+            # Create media content
+            fh = io.BytesIO(file_content)
+            media = MediaIoBaseUpload(
+                fh,
+                mimetype='application/octet-stream',
+                chunksize=1024*1024,
+                resumable=True
+            )
+            logger.debug("Media upload object created")
+            
+            # Upload file
+            logger.debug("Starting file upload to Drive...")
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
                 supportsAllDrives=True,
-                includeItemsFromAllDrives=True
+                fields='id, name, mimeType, size, webViewLink'
+            ).execute()
+            
+            logger.info(f"File uploaded successfully. File ID: {file.get('id')}")
+            
+            result = {
+                'id': file.get('id', ''),
+                'name': file.get('name', file_name),
+                'mimeType': file.get('mimeType', ''),
+                'size': file.get('size', 0),
+                'webViewLink': file.get('webViewLink', '')
+            }
+            logger.debug(f"Upload result: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to upload file {file_name}: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to upload file: {str(e)}")
+
+    def folder_exists(self, folder_name: str, parent_id: Optional[str] = None) -> bool:
+        """Check if a folder with the given name exists in the specified parent folder"""
+        try:
+            query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            if parent_id:
+                query += f" and '{parent_id}' in parents"
+            else:
+                query += f" and '{self.root_folder_id}' in parents"
+
+            results = self.service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name)',
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                driveId=self.team_drive_id,
+                corpora='drive'
             ).execute()
 
-            # Sum up the sizes of all files
-            total_size = 0
-            for file in files.get('files', []):
-                if 'size' in file:  # Some items like folders don't have size
-                    total_size += int(file['size'])
-
-            return total_size
+            return len(results.get('files', [])) > 0
 
         except Exception as e:
-            logger.error(f"Error getting folder size: {str(e)}", exc_info=True)
-            raise
+            print(f"Error checking folder existence: {str(e)}")
+            return False
+
+    def list_events(self) -> List[Dict]:
+        """List all event folders in the root folder"""
+        try:
+            logger.info("Listing event folders from root folder")
+            query = [
+                f"'{self.root_folder_id}' in parents",
+                "mimeType='application/vnd.google-apps.folder'",
+                "trashed=false"
+            ]
+            logger.debug(f"Query parameters: {query}")
+
+            results = self.service.files().list(
+                q=" and ".join(query),
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora='drive',
+                driveId=self.team_drive_id,
+                fields='files(id, name)',
+                orderBy='name'
+            ).execute()
+
+            events = results.get('files', [])
+            logger.info(f"Found {len(events)} event folders")
+            logger.debug(f"Event folders: {events}")
+            return events
+            
+        except Exception as e:
+            logger.error(f"Error listing events: {str(e)}", exc_info=True)
+            return []
 
     def get_folder_stats(self, folder_id: str) -> dict:
         """
@@ -481,45 +569,15 @@ class GoogleDriveService:
         Returns: dict with success status and additional info
         """
         try:
-            # List of media MIME types to copy
-            MEDIA_MIME_TYPES = [
-                'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-                'video/mp4', 'video/quicktime', 'video/x-msvideo',
-                'audio/mpeg', 'audio/mp4', 'audio/wav'
-            ]
-            
-            def list_all_files(folder_id: str, page_token=None):
-                """Recursively list all files in a folder"""
-                files = []
-                while True:
-                    # Query for files in the folder
-                    results = self.service.files().list(
-                        q=f"'{folder_id}' in parents and trashed=false",
-                        pageSize=1000,
-                        fields="nextPageToken, files(id, name, mimeType)",
-                        pageToken=page_token,
-                        supportsAllDrives=True,
-                        includeItemsFromAllDrives=True,
-                        corpora='drive',
-                        driveId=self.team_drive_id
-                    ).execute()
-                    
-                    for item in results.get('files', []):
-                        if item['mimeType'] == 'application/vnd.google-apps.folder':
-                            # Recursively get files from subfolders
-                            files.extend(list_all_files(item['id']))
-                        elif item['mimeType'] in MEDIA_MIME_TYPES:
-                            files.append(item)
-                    
-                    page_token = results.get('nextPageToken')
-                    if not page_token:
-                        break
-                        
-                return files
+            # Get all media files using get_folder_stats
+            source_stats = self.get_folder_stats(source_folder_id)
+            if not source_stats['success']:
+                return {
+                    'success': False,
+                    'error': source_stats['error']
+                }
 
-            # Get all media files
-            all_files = list_all_files(source_folder_id)
-            
+            all_files = source_stats['files']
             if not all_files:
                 return {
                     'success': False,
@@ -609,4 +667,28 @@ class GoogleDriveService:
             return {
                 'success': False,
                 'error': str(e)
-            } 
+            }
+
+    def get_folder_size(self, folder_id: str) -> int:
+        """Get total size of all files in a folder in bytes"""
+        try:
+            # Query for all files in the folder
+            query = f"'{folder_id}' in parents and trashed = false"
+            files = self.service.files().list(
+                q=query,
+                fields="files(size)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+
+            # Sum up the sizes of all files
+            total_size = 0
+            for file in files.get('files', []):
+                if 'size' in file:  # Some items like folders don't have size
+                    total_size += int(file['size'])
+
+            return total_size
+
+        except Exception as e:
+            logger.error(f"Error getting folder size: {str(e)}", exc_info=True)
+            raise 
