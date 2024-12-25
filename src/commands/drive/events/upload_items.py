@@ -449,20 +449,48 @@ class UploadManager:
                     })
 
             # Show completion message
-            total_size = format_file_size(sum(f['size_bytes'] for f in uploaded_files))
-            summary = "*Successfully Uploaded Files:*\n\n"
+            total_size = sum(f['size_bytes'] for f in uploaded_files)
+            
+            # Group files by type
+            type_stats = {}
             for file in uploaded_files:
-                emoji = {
-                    'document': '📄',
-                    'photo': '🖼',
-                    'video': '🎥',
-                    'audio': '🎵'
-                }.get(file['type'], '📁')
-                summary += f"{emoji} [{escape_markdown(file['name'])}]({escape_markdown(file['web_link'])}) \\- {escape_markdown(file['size'])}\n"
-            summary += f"\n*Total Size:* {escape_markdown(total_size)}"
+                if file['type'] not in type_stats:
+                    type_stats[file['type']] = {
+                        'count': 0,
+                        'size': 0,
+                        'emoji': {
+                            'document': '📄',
+                            'photo': '🖼',
+                            'video': '🎥',
+                            'audio': '🎵'
+                        }.get(file['type'], '📁')
+                    }
+                type_stats[file['type']]['count'] += 1
+                type_stats[file['type']]['size'] += file['size_bytes']
+
+            # Get folder size after upload
+            folder_size = self.drive_service.get_folder_size(folder_id)
+            
+            # Create summary
+            summary = (
+                f"✅ *Upload Complete\\!*\n\n"
+                f"📁 [*{escape_markdown(folder_name)}*]({escape_markdown(uploaded_files[0]['web_link'].split('/view')[0])})\n\n"
+                f"*Uploaded Media:*\n"
+            )
+            
+            for media_type, stats in type_stats.items():
+                summary += (
+                    f"{stats['emoji']} {escape_markdown(media_type.title())}: "
+                    f"`{stats['count']} files` \\({escape_markdown(format_file_size(stats['size']))}\\)\n"
+                )
+            
+            summary += (
+                f"\n*Total Uploaded:* `{len(uploaded_files)} files` \\({escape_markdown(format_file_size(total_size))}\\)\n"
+                f"*Folder Size:* `{escape_markdown(format_file_size(folder_size))}`"
+            )
 
             self.bot.edit_message_text(
-                f"✅ *Upload Complete\\!*\n\n{summary}",
+                summary,
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="MarkdownV2",
