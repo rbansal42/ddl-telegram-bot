@@ -471,10 +471,13 @@ class UploadManager:
             # Get folder size after upload
             folder_size = self.drive_service.get_folder_size(folder_id)
             
+            # Get folder sharing link
+            folder_link = self.drive_service.set_folder_sharing_permissions(folder_id)
+            
             # Create summary
             summary = (
                 f"✅ *Upload Complete\\!*\n\n"
-                f"📁 [*{escape_markdown(folder_name)}*]({escape_markdown(uploaded_files[0]['web_link'].split('/view')[0])})\n\n"
+                f"📁 [*{escape_markdown(folder_name)}*]({escape_markdown(folder_link)})\n\n"
                 f"*Uploaded Media:*\n"
             )
             
