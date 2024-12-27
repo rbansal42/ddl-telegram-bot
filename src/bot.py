@@ -2,6 +2,8 @@
 import os
 import signal
 import sys
+import logging
+import atexit
 
 # Third-party imports
 from dotenv import load_dotenv
@@ -27,6 +29,13 @@ from src.commands.drive.media_copy import register_media_copy_handlers
 from src.services.service_container import ServiceContainer
 from src.utils.command_helpers import get_commands_for_role
 from src.utils.state_management import UserStateManager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize services and bot
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -58,17 +67,48 @@ register_drive_handlers(bot, services.db, services.drive_service)
 register_admin_handlers(bot, services.db)
 register_media_copy_handlers(bot, services.db, services.drive_service, state_manager)
 
-# Signal handler for graceful shutdown
-def signal_handler(signum, frame):
-    print('\n🛑 Stopping the bot...')
-    services.close()
-    bot.stop_polling()
-    sys.exit(0)
+def cleanup_resources():
+    """Cleanup function to be called on shutdown"""
+    try:
+        logger.info("Cleaning up resources...")
+        services.close()
+        logger.info("Resources cleaned up successfully")
+    except Exception as e:
+        logger.error(f"Error during cleanup: {str(e)}")
 
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    signal_name = signal.Signals(signum).name
+    logger.info(f'\n🛑 Received signal {signal_name} ({signum})')
+    logger.info('Initiating graceful shutdown...')
+    
+    try:
+        # Stop accepting new requests
+        bot.stop_polling()
+        logger.info("Stopped accepting new requests")
+        
+        # Cleanup resources
+        cleanup_resources()
+        
+        # Exit gracefully
+        logger.info("Shutdown completed successfully")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Error during shutdown: {str(e)}")
+        sys.exit(1)
+
+# Register cleanup function
+atexit.register(cleanup_resources)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination
+signal.signal(signal.SIGHUP, signal_handler)   # Terminal closed
 
 if __name__ == '__main__':
-    print('🤖 Bot started. Press Ctrl+C to stop.')
-    bot.infinity_polling()
+    try:
+        logger.info('🤖 Bot started. Press Ctrl+C to stop.')
+        bot.infinity_polling()
+    except Exception as e:
+        logger.error(f"Critical error: {str(e)}")
+        sys.exit(1)
