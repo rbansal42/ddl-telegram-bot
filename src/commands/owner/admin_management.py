@@ -102,35 +102,24 @@ def register_admin_handlers(bot: TeleBot, db: MongoDB):
                 return
 
             user_id = int(command_args[1])
-            user = db.get_user(user_id)
+            promote_to_admin(bot, db, message.chat.id, user_id)
             
-            if not user:
-                bot.reply_to(message, "❌ User not found.")
-                return
-                
-            if user.role == 'ADMIN':
-                bot.reply_to(message, "❌ User is already an admin.")
-                return
-
-            # Update user role
-            db.update_user_role(user_id, 'ADMIN')
-            
-            # Update their command menu
-            commands = get_commands_for_role('admin')
-            bot.set_my_commands(commands, scope=BotCommandScopeChat(user_id))
-            
-            # Notify the user
-            try:
-                bot.send_message(user_id, "🎉 You have been promoted to admin! Use /adminhelp to see admin commands.")
-            except:
-                pass  # User might have blocked the bot
-                
-            bot.reply_to(message, f"✅ User {user_id} has been promoted to admin.")
+            log_action(
+                ActionType.ADMIN_ADDED,
+                message.from_user.id,
+                metadata={'promoted_user_id': user_id}
+            )
             
         except ValueError:
             bot.reply_to(message, "❌ Invalid user ID format.")
         except Exception as e:
             bot.reply_to(message, f"❌ An error occurred: {str(e)}")
+            log_action(
+                ActionType.COMMAND_FAILED,
+                message.from_user.id,
+                error_message=str(e),
+                metadata={'command': 'addadmin'}
+            )
 
     @bot.message_handler(commands=['removeadmin'])
     @check_admin_or_owner(bot, db)
